@@ -1,0 +1,55 @@
+{
+    "programming": [
+        "Python",
+        "C",
+        "C++",
+        "C#",
+        "Java",
+        "JavaScript",
+        "TypeScript",
+        "MATLAB",
+        "R",
+        "SQL"
+    ],
+    "data_science": [
+        "NumPy",
+        "Pandas",
+        "Scikit-learn",
+        "PyTorch",
+        "TensorFlow",
+        "XGBoost",
+        "Machine Learning",
+        "Deep Learning"
+    ],
+    "engineering": [
+        "CAD",
+        "FEA",
+        "FEM",
+        "CFD",
+        "GD&T",
+        "Mechanical Design",
+        "Finite Element Analysis"
+    ],
+    "cad": [
+        "SolidWorks",
+        "CATIA",
+        "Siemens NX",
+        "AutoCAD",
+        "Creo",
+        "Fusion 360"
+    ],
+    "simulation": [
+        "ANSYS",
+        "Abaqus",
+        "COMSOL",
+        "KISSsoft",
+        "Simulink"
+    ],
+    "project_management": [
+        "Jira",
+        "Confluence",
+        "Agile",
+        "Scrum",
+        "Project Management"
+    ]
+}

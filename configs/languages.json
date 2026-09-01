@@ -1,0 +1,32 @@
+{
+    "English": [
+        "english",
+        "englisch"
+    ],
+    "German": [
+        "german",
+        "deutsch",
+        "german/deutsch",
+        "deutsch/german",
+        "englisch"
+    ],
+    "Chinese": [
+        "chinese",
+        "chinesisch"
+    ],
+    "Hindi": [
+        "hindi"
+    ],
+    "Marathi": [
+        "marathi"
+    ],
+    "French": [
+        "french",
+        "französisch",
+        "französisch"
+    ],
+    "Spanish": [
+        "spanish",
+        "spanisch"
+    ]
+}

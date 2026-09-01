@@ -1,0 +1,32 @@
+{
+    "Germany": [
+        "Aachen",
+        "Berlin",
+        "Bonn",
+        "Cologne",
+        "Köln",
+        "Düsseldorf",
+        "Frankfurt",
+        "Hamburg",
+        "Hannover",
+        "Karlsruhe",
+        "Leipzig",
+        "Munich",
+        "München",
+        "Nuremberg",
+        "Nürnberg",
+        "Stuttgart"
+    ],
+    "India": [
+        "Mumbai",
+        "Delhi",
+        "Bangalore",
+        "Bengaluru",
+        "Hyderabad",
+        "Pune",
+        "Chennai",
+        "Kolkata",
+        "Ahmedabad",
+        "Nagpur"
+    ]
+}

@@ -1,0 +1,25 @@
+{
+  "Mechanical Engineering": [
+    "mechanical engineering",
+    "maschinenbau"
+  ],
+  "Computer Science": [
+    "computer science",
+    "informatik"
+  ],
+  "Electrical Engineering": [
+    "electrical engineering",
+    "elektrotechnik"
+  ],
+  "Energy Engineering": [
+    "energy engineering",
+    "nachhaltige energieversorgung"
+  ],
+  "Business Administration": [
+    "business administration",
+    "betriebswirtschaft"
+  ],
+  "Management": [
+    "management"
+  ]
+}
