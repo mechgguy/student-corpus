@@ -9,7 +9,7 @@ from .text_normalizer import (
 
 
 # ---------------------------------------------------------------------------
-# Regular expressions
+# EMAIL
 # ---------------------------------------------------------------------------
 
 EMAIL_RE = re.compile(
@@ -18,11 +18,10 @@ EMAIL_RE = re.compile(
 )
 
 
-# Broad phone pattern.
-#
-# IMPORTANT:
-# Date-shaped strings are filtered separately in _extract_phone().
-#
+# ---------------------------------------------------------------------------
+# PHONE
+# ---------------------------------------------------------------------------
+
 PHONE_RE = re.compile(
     r"(?<!\d)"
     r"(?:\+?\d[\d\s()./-]{7,}\d)"
@@ -30,82 +29,86 @@ PHONE_RE = re.compile(
 )
 
 
-LINKEDIN_RE = re.compile(
+# ---------------------------------------------------------------------------
+# LINKEDIN / GITHUB
+# ---------------------------------------------------------------------------
+#
+# These patterns intentionally support:
+#
+#   https://www.linkedin.com/in/username
+#   https://linkedin.com/in/username
+#   www.linkedin.com/in/username
+#   linkedin.com/in/username
+#
+# They are primarily used when an actual URL exists in extracted PDF text.
+#
+# Username-only extraction is handled separately below because:
+#
+#   /username
+#   username
+#
+# is ambiguous without the surrounding "LinkedIn" / "GitHub" label.
+# ---------------------------------------------------------------------------
+
+LINKEDIN_URL_RE = re.compile(
     r"(?:https?://)?(?:www\.)?"
-    r"linkedin\.com/in/[A-Za-z0-9._%/-]+",
+    r"linkedin\.com/in/"
+    r"([A-Za-z0-9._%-]+)",
     re.IGNORECASE,
 )
 
-
-GITHUB_RE = re.compile(
+GITHUB_URL_RE = re.compile(
     r"(?:https?://)?(?:www\.)?"
-    r"github\.com/[A-Za-z0-9._%/-]+",
+    r"github\.com/"
+    r"([A-Za-z0-9._%-]+)",
     re.IGNORECASE,
 )
 
 
 # ---------------------------------------------------------------------------
-# Date of birth patterns
+# LABELLED PROFILE LINKS
+# ---------------------------------------------------------------------------
+#
+# Handles examples such as:
+#
+#   LinkedIn: /manas-mehrotraa
+#   LinkedIn /manas-mehrotraa
+#   LinkedIn: manas-mehrotraa
+#   LinkedIn: linkedin.com/in/manas-mehrotraa
+#
+# The label is important because a bare username by itself is ambiguous.
 # ---------------------------------------------------------------------------
 
-# Common date formats found in CVs.
-#
-# Examples:
-#   31/01/1998
-#   31.01.1998
-#   31-01-1998
-#   31/1/1998
-#   31.1.1998
-#
-DATE_PATTERN = (
-    r"(?:"
-    r"(?:0?[1-9]|[12]\d|3[01])"
-    r"[./-]"
-    r"(?:0?[1-9]|1[0-2])"
-    r"[./-]"
-    r"(?:19|20)\d{2}"
-    r")"
+LINKEDIN_LABEL_RE = re.compile(
+    r"\blinkedin\b"
+    r"\s*(?:profile|url|link)?"
+    r"\s*[:\-]?\s*"
+    r"(?:https?://)?"
+    r"(?:www\.)?"
+    r"(?:linkedin\.com/in/)?"
+    r"[/]?"
+    r"([A-Za-z0-9][A-Za-z0-9._%-]{1,99})",
+    re.IGNORECASE,
 )
 
-DATE_RE = re.compile(
-    rf"(?<!\d){DATE_PATTERN}(?!\d)"
-)
-
-
-# Explicit labels strongly indicating date of birth.
-#
-# English:
-#   Date of Birth
-#   DOB
-#   Birth Date
-#   Born
-#
-# German:
-#   Geburtsdatum
-#   Geburtstag
-#   Geboren
-#
-DOB_LABEL_RE = re.compile(
-    r"\b(?:"
-    r"date\s+of\s+birth|"
-    r"birth\s+date|"
-    r"dob|"
-    r"date\s+born|"
-    r"born|"
-    r"geburtsdatum|"
-    r"geburtstag|"
-    r"geboren"
-    r")\b",
+GITHUB_LABEL_RE = re.compile(
+    r"\bgithub\b"
+    r"\s*(?:profile|url|link)?"
+    r"\s*[:\-]?\s*"
+    r"(?:https?://)?"
+    r"(?:www\.)?"
+    r"(?:github\.com/)?"
+    r"[/]?"
+    r"([A-Za-z0-9][A-Za-z0-9._%-]{1,99})",
     re.IGNORECASE,
 )
 
 
 # ---------------------------------------------------------------------------
-# Words that strongly suggest this is not a person's name.
+# WORDS THAT STRONGLY SUGGEST THIS IS NOT A PERSON'S NAME
 # ---------------------------------------------------------------------------
 
 NON_NAME_WORDS = {
-
     "ingenieur",
     "engineer",
     "engineering",
@@ -133,11 +136,10 @@ NON_NAME_WORDS = {
 
 
 # ---------------------------------------------------------------------------
-# General cleaning
+# GENERAL CLEANING
 # ---------------------------------------------------------------------------
 
 def _clean_contact_value(value: str) -> str | None:
-
     if not value:
         return None
 
@@ -147,11 +149,10 @@ def _clean_contact_value(value: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Email
+# EMAIL
 # ---------------------------------------------------------------------------
 
 def _extract_email(text: str) -> str | None:
-
     match = EMAIL_RE.search(text)
 
     if not match:
@@ -161,238 +162,36 @@ def _extract_email(text: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Date helpers
-# ---------------------------------------------------------------------------
-
-def _normalize_date(date_value: str) -> str | None:
-    """
-    Normalize common date separators.
-
-    Examples:
-
-        31/01/1998 -> 31/01/1998
-        31.01.1998 -> 31/01/1998
-        31-01-1998 -> 31/01/1998
-
-    The extracted value is intentionally kept in DD/MM/YYYY format.
-    """
-
-    if not date_value:
-        return None
-
-    date_value = date_value.strip()
-
-    date_value = re.sub(
-        r"[.-]",
-        "/",
-        date_value,
-    )
-
-    return date_value
-
-
-def _is_date_like(value: str) -> bool:
-    """
-    Return True when a string looks like a calendar date.
-
-    This is particularly important because the broad phone
-    regex can otherwise interpret:
-
-        31/01/1998
-
-    as a phone number.
-    """
-
-    if not value:
-        return False
-
-    value = value.strip()
-
-    return bool(
-        DATE_RE.fullmatch(value)
-    )
-
-
-# ---------------------------------------------------------------------------
-# Date of birth extraction
-# ---------------------------------------------------------------------------
-
-def _extract_date_of_birth(text: str) -> str | None:
-    """
-    Extract date of birth from a CV.
-
-    Priority:
-
-        1. Explicit DOB label + nearby date
-        2. Common DOB labels anywhere in the text
-        3. Do NOT blindly return the first date in the CV
-
-    Examples handled:
-
-        Geburtsdatum: 31/01/1998
-        Date of Birth: 31.01.1998
-        DOB: 31-01-1998
-        Born: 31/01/1998
-        Geboren: 31.01.1998
-
-    This intentionally does NOT return arbitrary dates such as:
-
-        Jan 2025 - Dec 2025
-        2026
-        2019
-    """
-
-    if not text:
-        return None
-
-    # ---------------------------------------------------------------
-    # First priority:
-    # explicit label followed by a date
-    # ---------------------------------------------------------------
-
-    labeled_pattern = re.compile(
-        rf"\b(?:"
-        r"date\s+of\s+birth|"
-        r"birth\s+date|"
-        r"dob|"
-        r"date\s+born|"
-        r"born|"
-        r"geburtsdatum|"
-        r"geburtstag|"
-        r"geboren"
-        r")"
-        rf"\s*(?:[:=\-]|\s)\s*"
-        rf"({DATE_PATTERN})",
-        re.IGNORECASE,
-    )
-
-    match = labeled_pattern.search(text)
-
-    if match:
-        return _normalize_date(
-            match.group(1)
-        )
-
-    # ---------------------------------------------------------------
-    # Second priority:
-    # search line-by-line.
-    #
-    # This handles PDF extraction such as:
-    #
-    # Geburtsdatum
-    # 31/01/1998
-    #
-    # ---------------------------------------------------------------
-
-    lines = [
-        normalize_line(line)
-        for line in text.splitlines()
-        if normalize_line(line)
-    ]
-
-    for i, line in enumerate(lines):
-
-        if not DOB_LABEL_RE.search(line):
-            continue
-
-        # Date on the same line.
-        match = DATE_RE.search(line)
-
-        if match:
-            return _normalize_date(
-                match.group(0)
-            )
-
-        # Date on the next line.
-        if i + 1 < len(lines):
-
-            next_line = lines[i + 1]
-
-            match = DATE_RE.search(
-                next_line
-            )
-
-            if match:
-                return _normalize_date(
-                    match.group(0)
-                )
-
-    # ---------------------------------------------------------------
-    # No explicit DOB label -> do not guess.
-    # ---------------------------------------------------------------
-
-    return None
-
-
-# ---------------------------------------------------------------------------
-# Phone
+# PHONE
 # ---------------------------------------------------------------------------
 
 def _extract_phone(text: str) -> str | None:
     """
-    Extract a phone number while avoiding date-shaped values.
-
-    Examples:
-
-        +49-162-975-0578
-        +49 162 975 0578
-        +49 (162) 9750578
-        0241 1234567
-
-    A value such as:
+    Extract a phone number while avoiding dates such as:
 
         31/01/1998
-
-    is explicitly rejected as a date.
+        2025-01-01
     """
 
-    if not text:
-        return None
-
-    matches = PHONE_RE.finditer(text)
-
-    for match in matches:
+    for match in PHONE_RE.finditer(text):
 
         phone = match.group(0).strip()
 
-        # -----------------------------------------------------------
-        # Reject dates.
-        # -----------------------------------------------------------
+        digits = re.sub(r"\D", "", phone)
 
-        if _is_date_like(phone):
-            continue
-
-        # -----------------------------------------------------------
-        # Remove whitespace/punctuation and count digits.
-        # -----------------------------------------------------------
-
-        digits = re.sub(
-            r"\D",
-            "",
-            phone,
-        )
-
-        # Phone numbers should contain a reasonable
-        # number of digits.
+        # A realistic phone number should contain enough digits.
         if len(digits) < 8:
             continue
 
-        if len(digits) > 15:
+        # Reject obvious date formats.
+        if re.fullmatch(
+            r"\d{1,2}[./-]\d{1,2}[./-]\d{2,4}",
+            phone,
+        ):
             continue
 
-        # -----------------------------------------------------------
-        # Additional protection against date-like strings.
-        #
-        # Examples:
-        #
-        # 31/01/1998
-        # 31-01-1998
-        # 31.01.1998
-        #
-        # -----------------------------------------------------------
-
         if re.fullmatch(
-            r"\d{1,2}[./-]\d{1,2}[./-]\d{4}",
+            r"\d{4}[./-]\d{1,2}[./-]\d{1,2}",
             phone,
         ):
             continue
@@ -403,49 +202,205 @@ def _extract_phone(text: str) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# LinkedIn
+# DATE OF BIRTH
+# ---------------------------------------------------------------------------
+
+DATE_OF_BIRTH_LABEL_RE = re.compile(
+    r"""
+    \b
+    (?:
+        date\s+of\s+birth
+        |
+        birth\s*date
+        |
+        geboren
+        |
+        geburtsdatum
+        |
+        geburts\s*datum
+        |
+        dob
+    )
+    \s*
+    [:.\-]?
+    \s*
+    (
+        \d{1,2}[./-]\d{1,2}[./-]\d{2,4}
+        |
+        \d{4}[./-]\d{1,2}[./-]\d{1,2}
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _extract_date_of_birth(text: str) -> str | None:
+    """
+    Extract date of birth only when it is associated with a DOB label.
+
+    Examples:
+
+        Geburtsdatum: 31/01/1998
+        Date of Birth: 31/01/1998
+        DOB: 31-01-1998
+
+    This prevents ordinary dates in education/experience sections
+    from being mistaken for a date of birth.
+    """
+
+    match = DATE_OF_BIRTH_LABEL_RE.search(text)
+
+    if not match:
+        return None
+
+    return match.group(1).strip()
+
+
+# ---------------------------------------------------------------------------
+# PROFILE URL NORMALIZATION
+# ---------------------------------------------------------------------------
+
+def _normalize_linkedin_username(username: str) -> str | None:
+    """
+    Convert a LinkedIn username into a canonical URL.
+    """
+
+    if not username:
+        return None
+
+    username = username.strip().strip("/")
+
+    if not username:
+        return None
+
+    return f"https://www.linkedin.com/in/{username}"
+
+
+def _normalize_github_username(username: str) -> str | None:
+    """
+    Convert a GitHub username into a canonical URL.
+    """
+
+    if not username:
+        return None
+
+    username = username.strip().strip("/")
+
+    if not username:
+        return None
+
+    return f"https://github.com/{username}"
+
+
+# ---------------------------------------------------------------------------
+# LINKEDIN
 # ---------------------------------------------------------------------------
 
 def _extract_linkedin(text: str) -> str | None:
+    """
+    Extract LinkedIn profile from:
 
-    match = LINKEDIN_RE.search(text)
+        https://www.linkedin.com/in/username
+        https://linkedin.com/in/username
+        www.linkedin.com/in/username
+        linkedin.com/in/username
 
-    if not match:
-        return None
+    or labelled username forms:
 
-    value = match.group(0)
+        LinkedIn: /username
+        LinkedIn: username
+        LinkedIn /username
 
-    if not value.lower().startswith("http"):
-        value = "https://" + value
+    Returns a canonical URL.
+    """
 
-    return value
+    # ---------------------------------------------------------
+    # 1. Full / partial LinkedIn URL
+    # ---------------------------------------------------------
+
+    match = LINKEDIN_URL_RE.search(text)
+
+    if match:
+        return _normalize_linkedin_username(match.group(1))
+
+    # ---------------------------------------------------------
+    # 2. Labelled username
+    # ---------------------------------------------------------
+
+    match = LINKEDIN_LABEL_RE.search(text)
+
+    if match:
+        username = match.group(1)
+
+        # Avoid accidentally treating words after "LinkedIn"
+        # as usernames when they clearly are not.
+        if username.lower() not in {
+            "linkedin",
+            "profile",
+            "url",
+            "link",
+        }:
+            return _normalize_linkedin_username(username)
+
+    return None
 
 
 # ---------------------------------------------------------------------------
-# GitHub
+# GITHUB
 # ---------------------------------------------------------------------------
 
 def _extract_github(text: str) -> str | None:
+    """
+    Extract GitHub profile from:
 
-    match = GITHUB_RE.search(text)
+        https://github.com/username
+        https://www.github.com/username
+        www.github.com/username
+        github.com/username
 
-    if not match:
-        return None
+    or labelled username forms:
 
-    value = match.group(0)
+        GitHub: /username
+        GitHub: username
+        GitHub /username
 
-    if not value.lower().startswith("http"):
-        value = "https://" + value
+    Returns a canonical URL.
+    """
 
-    return value
+    # ---------------------------------------------------------
+    # 1. Full / partial GitHub URL
+    # ---------------------------------------------------------
+
+    match = GITHUB_URL_RE.search(text)
+
+    if match:
+        return _normalize_github_username(match.group(1))
+
+    # ---------------------------------------------------------
+    # 2. Labelled username
+    # ---------------------------------------------------------
+
+    match = GITHUB_LABEL_RE.search(text)
+
+    if match:
+        username = match.group(1)
+
+        if username.lower() not in {
+            "github",
+            "profile",
+            "url",
+            "link",
+        }:
+            return _normalize_github_username(username)
+
+    return None
 
 
 # ---------------------------------------------------------------------------
-# Name detection
+# NAME DETECTION
 # ---------------------------------------------------------------------------
 
 def _looks_like_name(line: str) -> bool:
-
     line = normalize_line(line)
 
     if not line:
@@ -472,19 +427,16 @@ def _looks_like_name(line: str) -> bool:
         return False
 
     # Reject obvious URLs.
-    if "linkedin" in line.lower():
+    lower = line.lower()
+
+    if "linkedin" in lower:
         return False
 
-    if "github" in line.lower():
+    if "github" in lower:
         return False
 
     # Reject obvious job titles / headings.
-    lower = line.lower()
-
-    if any(
-        word in lower.split()
-        for word in NON_NAME_WORDS
-    ):
+    if any(word in lower.split() for word in NON_NAME_WORDS):
         return False
 
     # Names should consist primarily of letters.
@@ -509,19 +461,14 @@ def _extract_name(lines: list[str]) -> str | None:
         Robotic Systems Ingenieur
     """
 
-    # ---------------------------------------------------------------
-    # First look for adjacent lines.
-    # ---------------------------------------------------------------
+    # ---------------------------------------------------------
+    # 1. Adjacent lines
+    # ---------------------------------------------------------
 
     for i in range(len(lines) - 1):
 
-        first = normalize_line(
-            lines[i]
-        )
-
-        second = normalize_line(
-            lines[i + 1]
-        )
+        first = normalize_line(lines[i])
+        second = normalize_line(lines[i + 1])
 
         if not first or not second:
             continue
@@ -531,9 +478,9 @@ def _extract_name(lines: list[str]) -> str | None:
         if _looks_like_name(candidate):
             return candidate
 
-    # ---------------------------------------------------------------
-    # Fallback: already combined name on one line.
-    # ---------------------------------------------------------------
+    # ---------------------------------------------------------
+    # 2. Already combined name
+    # ---------------------------------------------------------
 
     for line in lines[:15]:
 
@@ -544,15 +491,14 @@ def _extract_name(lines: list[str]) -> str | None:
 
 
 # ---------------------------------------------------------------------------
-# Location
+# LOCATION
 # ---------------------------------------------------------------------------
 
 def _extract_location(text: str) -> str | None:
 
     # German postal code + city.
     match = re.search(
-        r"\b\d{5}\s+"
-        r"([A-Za-zÄÖÜäöüßÀ-ÿ -]+)",
+        r"\b\d{5}\s+([A-Za-zÄÖÜäöüßÀ-ÿ -]+)",
         text,
     )
 
@@ -572,65 +518,36 @@ def _extract_location(text: str) -> str | None:
     # Common explicit country/city combination.
     match = re.search(
         r"\b("
-        r"Aachen|"
-        r"Berlin|"
-        r"Bonn|"
-        r"Cologne|"
-        r"Köln|"
-        r"Düsseldorf|"
-        r"Frankfurt|"
-        r"Hamburg|"
-        r"Hannover|"
-        r"Karlsruhe|"
-        r"Leipzig|"
-        r"Munich|"
-        r"München|"
-        r"Nuremberg|"
-        r"Nürnberg|"
-        r"Stuttgart"
+        r"Aachen|Berlin|Bonn|Cologne|Köln|"
+        r"Düsseldorf|Frankfurt|Hamburg|Hannover|"
+        r"Karlsruhe|Leipzig|Munich|München|"
+        r"Nuremberg|Nürnberg|Stuttgart"
         r")\b",
         text,
         re.IGNORECASE,
     )
 
     if match:
-        return (
-            f"{match.group(1)}, Germany"
-        )
+        return f"{match.group(1)}, Germany"
 
     return None
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# MAIN CONTACT EXTRACTION
 # ---------------------------------------------------------------------------
 
 def extract_contacts(text: str) -> dict:
-    """
-    Extract contact and personal information from CV text.
-
-    Returns:
-
-        {
-            "name": ...,
-            "email": ...,
-            "phone": ...,
-            "linkedin": ...,
-            "github": ...,
-            "location": ...,
-            "date_of_birth": ...
-        }
-    """
 
     if not text:
         return {
             "name": None,
+            "date_of_birth": None,
             "email": None,
             "phone": None,
             "linkedin": None,
             "github": None,
             "location": None,
-            "date_of_birth": None,
         }
 
     lines = [
@@ -639,7 +556,13 @@ def extract_contacts(text: str) -> dict:
         if normalize_line(line)
     ]
 
+    # ---------------------------------------------------------
+    # Extract fields
+    # ---------------------------------------------------------
+
     name = _extract_name(lines)
+
+    date_of_birth = _extract_date_of_birth(text)
 
     email = _extract_email(text)
 
@@ -651,10 +574,16 @@ def extract_contacts(text: str) -> dict:
 
     location = _extract_location(text)
 
-    date_of_birth = _extract_date_of_birth(text)
+    # ---------------------------------------------------------
+    # Return
+    # ---------------------------------------------------------
 
     return {
         "name": _clean_contact_value(name),
+
+        "date_of_birth": _clean_contact_value(
+            date_of_birth
+        ),
 
         "email": _clean_contact_value(email),
 
@@ -665,8 +594,4 @@ def extract_contacts(text: str) -> dict:
         "github": _clean_contact_value(github),
 
         "location": _clean_contact_value(location),
-
-        "date_of_birth": _clean_contact_value(
-            date_of_birth
-        ),
     }

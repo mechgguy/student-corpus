@@ -30,7 +30,6 @@ LEVELS = [
 
 
 def load_languages():
-
     config_path = (
         Path(__file__).resolve().parents[2]
         / "configs"
@@ -42,7 +41,6 @@ def load_languages():
 
 
 def normalize_text(text: str) -> str:
-
     # Remove invisible PDF characters
     text = (
         text
@@ -56,9 +54,18 @@ def normalize_text(text: str) -> str:
 
 
 def find_level(text: str):
+    """
+    Find a language proficiency level.
+
+    Priority:
+        1. CEFR level: A1-C2
+        2. Native / mother tongue
+        3. Fluent / bilingual
+        4. Other proficiency descriptions
+    """
 
     if not text:
-        return None
+        return "Not Provided"
 
     # ---------------------------------------------------------
     # 1. CEFR levels have highest priority
@@ -84,7 +91,6 @@ def find_level(text: str):
     )
 
     for level in sorted_levels:
-
         if re.search(
             rf"(?<!\w){re.escape(level)}(?!\w)",
             text,
@@ -92,10 +98,157 @@ def find_level(text: str):
         ):
             return level
 
-    return None
+    return "Not Provided"
+
+
+def _find_language(line: str, languages: dict):
+    """
+    Return the canonical language name and match object
+    if a configured language is found in the line.
+    """
+
+    for canonical_name, aliases in languages.items():
+
+        for alias in aliases:
+
+            pattern = rf"(?<!\w){re.escape(alias)}(?!\w)"
+
+            match = re.search(
+                pattern,
+                line,
+                re.IGNORECASE,
+            )
+
+            if match:
+                return canonical_name, match
+
+    return None, None
+
+
+def _contains_language(text: str, languages: dict) -> bool:
+    """
+    Check whether text contains any configured language.
+    """
+
+    if not text:
+        return False
+
+    canonical_name, match = _find_language(
+        text,
+        languages,
+    )
+
+    return match is not None
+
+
+def _extract_language_context(
+    lines: list[str],
+    index: int,
+    match: re.Match,
+    languages: dict,
+) -> str:
+    """
+    Extract proficiency context belonging to a language.
+
+    Supports both:
+
+        German C1
+
+    and PDF layouts where the proficiency is placed
+    on the following line:
+
+        German
+        C1
+
+    We inspect:
+
+        - text after the language on the same line
+        - the next few lines
+
+    but stop as soon as another language is encountered.
+    """
+
+    context_parts = []
+
+    # ---------------------------------------------------------
+    # 1. Text after language on the SAME line
+    # ---------------------------------------------------------
+
+    same_line_context = lines[index][match.end():].strip()
+
+    if same_line_context:
+        context_parts.append(same_line_context)
+
+    # ---------------------------------------------------------
+    # 2. Look at following lines
+    #
+    # PDF extraction often separates the language and
+    # proficiency into different lines.
+    # ---------------------------------------------------------
+
+    MAX_FOLLOWING_LINES = 2
+
+    for offset in range(1, MAX_FOLLOWING_LINES + 1):
+
+        next_index = index + offset
+
+        if next_index >= len(lines):
+            break
+
+        next_line = lines[next_index].strip()
+
+        if not next_line:
+            continue
+
+        # -----------------------------------------------------
+        # Stop if another language starts.
+        #
+        # Example:
+        #
+        # Deutsch
+        # C1
+        # Englisch
+        # C2
+        #
+        # C1 belongs to Deutsch, but C2 belongs to Englisch.
+        # -----------------------------------------------------
+
+        if _contains_language(
+            next_line,
+            languages,
+        ):
+            break
+
+        context_parts.append(next_line)
+
+    return " ".join(context_parts)
 
 
 def extract_languages(section_text: str):
+    """
+    Extract languages and proficiency levels from CV text.
+
+    Handles both inline and vertically separated PDF layouts.
+
+    Examples:
+
+        German C1
+        English C2
+
+    and:
+
+        German
+        C1
+        English
+        C2
+
+    and:
+
+        German
+        fluent
+        English
+        native speaker
+    """
 
     if not section_text:
         return []
@@ -107,114 +260,68 @@ def extract_languages(section_text: str):
     results = []
 
     # ---------------------------------------------------------
-    # Process each line independently
-    #
-    # This is important because proficiency belongs to the
-    # language on the same CV line.
+    # Normalize lines
     # ---------------------------------------------------------
 
-    for line in section_text.splitlines():
+    lines = []
 
-        line = line.strip()
+    for raw_line in section_text.splitlines():
+
+        line = raw_line.strip()
 
         if not line:
             continue
 
         # Ignore separator-only lines
-        if re.fullmatch(r"[\|\-–—•·]+", line):
+        if re.fullmatch(
+            r"[\|\-–—•·*]+",
+            line,
+        ):
             continue
 
-        for canonical_name, aliases in languages.items():
+        lines.append(line)
 
-            found = False
+    # ---------------------------------------------------------
+    # Process each line
+    # ---------------------------------------------------------
 
-            for alias in aliases:
+    for index, line in enumerate(lines):
 
-                pattern = rf"(?<!\w){re.escape(alias)}(?!\w)"
+        canonical_name, match = _find_language(
+            line,
+            languages,
+        )
 
-                if re.search(
-                    pattern,
-                    line,
-                    re.IGNORECASE,
-                ):
-                    found = True
-                    break
+        if not match:
+            continue
 
-            if not found:
-                continue
+        # -----------------------------------------------------
+        # Extract context belonging to this language
+        # -----------------------------------------------------
 
-            # -------------------------------------------------
-            # The language was found on this line.
-            #
-            # Everything after the language occurrence is the
-            # most relevant place to look for proficiency.
-            # -------------------------------------------------
+        language_context = _extract_language_context(
+            lines=lines,
+            index=index,
+            match=match,
+            languages=languages,
+        )
 
-            match = None
+        # -----------------------------------------------------
+        # Find proficiency
+        # -----------------------------------------------------
 
-            for alias in aliases:
+        level = find_level(language_context)
 
-                pattern = rf"(?<!\w){re.escape(alias)}(?!\w)"
-
-                m = re.search(
-                    pattern,
-                    line,
-                    re.IGNORECASE,
-                )
-
-                if m:
-                    match = m
-                    break
-
-            if not match:
-                continue
-
-            context = line[match.end():]
-            
-            # Only inspect text up to the next language.
-            # This prevents a proficiency belonging to another
-            # language from being assigned to the current language.
-            
-            next_language_start = len(context)
-            
-            for other_canonical, other_aliases in languages.items():
-            
-                # Ignore other aliases belonging to the SAME language.
-                # Example:
-                # German/Deutsch
-                #
-                # German and Deutsch are both the same language,
-                # so Deutsch must not terminate German's context.
-            
-                if other_canonical == canonical_name:
-                    continue
-            
-                for other_alias in other_aliases:
-            
-                    next_match = re.search(
-                        rf"(?<!\w){re.escape(other_alias)}(?!\w)",
-                        context,
-                        re.IGNORECASE,
-                    )
-            
-                    if next_match:
-                        next_language_start = min(
-                            next_language_start,
-                            next_match.start(),
-                        )            
-           
-            language_context = context[:next_language_start]
-            
-            level = find_level(language_context)
-            results.append(
-                {
-                    "language": canonical_name,
-                    "level": level,
-                }
-            )
+        results.append(
+            {
+                "language": canonical_name,
+                "level": level,
+            }
+        )
 
     # ---------------------------------------------------------
     # Remove duplicates
+    #
     # Keep the first occurrence.
     # ---------------------------------------------------------
 
