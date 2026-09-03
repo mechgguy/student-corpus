@@ -11,25 +11,58 @@
         "R",
         "SQL"
     ],
-    "data_science": [
-        "NumPy",
-        "Pandas",
-        "Scikit-learn",
-        "PyTorch",
-        "TensorFlow",
-        "XGBoost",
-        "Machine Learning",
-        "Deep Learning"
-    ],
-    "engineering": [
-        "CAD",
-        "FEA",
-        "FEM",
-        "CFD",
-        "GD&T",
-        "Mechanical Design",
-        "Finite Element Analysis"
-    ],
+  "frameworks_libraries": [
+    "PyTorch",
+    "TensorFlow",
+    "FastAPI",
+    "Spring",
+    "Spring Boot",
+    "React",
+    "Angular",
+    "Vue",
+    "OpenCV",
+    "NumPy",
+    "Pandas",
+    "Scikit-learn",
+    "XGBoost"
+  ],
+    "robotics": [
+    "ROS",
+    "ROS2",
+    "MoveIt",
+    "Isaac Sim",
+    "MuJoCo",
+    "Robotics",
+    "Sensor Fusion",
+    "Computer Vision"
+  ],
+    "ai_ml": [
+    "Machine Learning",
+    "Deep Learning",
+    "CNN",
+    "CNNs",
+    "Transformers",
+    "LLM",
+    "LLMs",
+    "Large Language Models",
+    "Computer Vision",
+    "Natural Language Processing",
+    "NLP"
+  ],
+  "engineering": [
+    "CAD",
+    "FEA",
+    "FEM",
+    "CFD",
+    "GD&T",
+    "Mechanical Design",
+    "Finite Element Analysis",
+    "Robotics",
+    "Control Engineering",
+    "Regelungstechnik",
+    "Maschinenbau",
+    "Konstruktion"
+  ],
     "cad": [
         "SolidWorks",
         "CATIA",
@@ -43,8 +76,23 @@
         "Abaqus",
         "COMSOL",
         "KISSsoft",
-        "Simulink"
+        "Simulink",
+        "MATLAB"
     ],
+      "databases": [
+    "SQL",
+    "PostgreSQL",
+    "MySQL",
+    "MongoDB",
+    "Oracle"
+  ],
+  "communication_protocols": [
+    "MQTT",
+    "OPC UA",
+    "Modbus",
+    "TCP/IP",
+    "Kafka"
+  ],
     "project_management": [
         "Jira",
         "Confluence",

@@ -1,3 +1,4 @@
+from __future__ import annotations
 
 from .contact_extractor import extract_contacts
 from .location_extractor import extract_location
@@ -88,6 +89,9 @@ def extract_candidate(
         sections.get("skills", "")
     )
 
+    if not isinstance(skills, dict):
+        skills = {}
+
     # ---------------------------------------------------------
     # 7. Work experience
     # ---------------------------------------------------------
@@ -123,6 +127,7 @@ def extract_candidate(
         filename=filename,
 
         name=contacts.get("name"),
+        date_of_birth=contacts.get("date_of_birth"),
         email=contacts.get("email"),
         phone=contacts.get("phone"),
 
@@ -137,7 +142,7 @@ def extract_candidate(
         experience=experience,
 
         total_experience_years=total_experience,
-        technical_skills=skills,
+        technical_skills=skills or {},
         software_skills=[],
 
         languages=languages,
@@ -216,6 +221,7 @@ def extract_cv(text: str):
 
     return {
         "name": contacts.get("name"),
+        "date_of_birth": contacts.get("date_of_birth"),
         "email": contacts.get("email"),
         "phone": contacts.get("phone"),
         "location": location,

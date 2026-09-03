@@ -7,12 +7,15 @@
         "german",
         "deutsch",
         "german/deutsch",
-        "deutsch/german",
-        "englisch"
+        "deutsch/german"
     ],
     "Chinese": [
         "chinese",
         "chinesisch"
+    ],
+    "Cantonese": [
+	    "cantonese",
+	    "kantonesisch"
     ],
     "Hindi": [
         "hindi"

@@ -40,7 +40,7 @@ def normalize_skill(skill: str):
 def extract_skills(section_text: str):
 
     if not section_text:
-        return []
+        return {}
 
     skills = load_skills()
 
