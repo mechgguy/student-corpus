@@ -31,6 +31,7 @@ class Candidate(BaseModel):
 
     name: str | None = None
     date_of_birth: str | None = None
+    nationality: str | None = None
     email: str | None = None
     phone: str | None = None
     location: str | None = None

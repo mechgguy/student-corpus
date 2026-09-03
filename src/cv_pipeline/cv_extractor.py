@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from src.cv_pipeline.personal_extractor import (
+    extract_name,
+    extract_nationality,
+)
 from .contact_extractor import extract_contacts
 from .location_extractor import extract_location
 from .language_extractor import extract_languages
@@ -126,8 +130,10 @@ def extract_candidate(
         candidate_id=candidate_id,
         filename=filename,
 
-        name=contacts.get("name"),
+        # name=contacts.get("name"),
+        name = extract_name(text),
         date_of_birth=contacts.get("date_of_birth"),
+        nationality = extract_nationality(text),
         email=contacts.get("email"),
         phone=contacts.get("phone"),
 
@@ -220,8 +226,10 @@ def extract_cv(text: str):
     )
 
     return {
-        "name": contacts.get("name"),
+        # "name": contacts.get("name"),
+        "name": extract_name(text),
         "date_of_birth": contacts.get("date_of_birth"),
+        "nationality": extract_nationality(text),
         "email": contacts.get("email"),
         "phone": contacts.get("phone"),
         "location": location,
