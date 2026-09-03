@@ -1,12 +1,25 @@
+from __future__ import annotations
+
 import re
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import date
+from typing import Optional
 
 
-# =========================================================
+# ============================================================
 # Configuration
-# =========================================================
+# ============================================================
+
+CURRENT_YEAR = date.today().year
+CURRENT_MONTH = date.today().month
+
+
+# ============================================================
+# Date patterns
+# ============================================================
 
 MONTHS = {
+    # English
     "january": 1,
     "jan": 1,
     "february": 2,
@@ -31,141 +44,465 @@ MONTHS = {
     "nov": 11,
     "december": 12,
     "dec": 12,
-}
-
-
-STOP_SECTIONS = {
-    # English
-    "social engagement",
-    "social involvement",
-    "volunteer experience",
-    "volunteering",
-    "extracurricular activities",
 
     # German
-    "ehrenamt",
-    "ehrenamtliche tätigkeiten",
-    "soziales engagement",
-    "soziales engagement",
-    "freiwilligenarbeit",
+    "januar": 1,
+    "jan": 1,
+    "februar": 2,
+    "märz": 3,
+    "maerz": 3,
+    "april": 4,
+    "mai": 5,
+    "juni": 6,
+    "juli": 7,
+    "august": 8,
+    "september": 9,
+    "oktober": 10,
+    "okt": 10,
+    "november": 11,
+    "dezember": 12,
+    "dez": 12,
 }
 
 
-# =========================================================
-# Text normalization
-# =========================================================
+PRESENT_WORDS = {
+    "present",
+    "current",
+    "now",
+    "ongoing",
+    "today",
 
-def _clean_line(line):
-    """
-    Normalize common PDF extraction artifacts.
-
-    This is intentionally conservative.
-    """
-
-    if not line:
-        return ""
-
-    line = line.strip()
-
-    # Common bullet characters / OCR artifacts
-    line = re.sub(r"^[\uf0b7\u2022\u25aa\u25cfò]+\s*", "", line)
-
-    # Normalize common dash variants.
-    line = line.replace("–", "-")
-    line = line.replace("—", "-")
-    line = line.replace("-", "-")
-    line = line.replace("û", "-")
-
-    # Collapse whitespace.
-    line = re.sub(r"\s+", " ", line)
-
-    return line.strip()
+    # German
+    "heute",
+    "aktuell",
+    "gegenwart",
+    "laufend",
+    "derzeit",
+    "bis heute",
+    "bis jetzt",
+}
 
 
-def _clean_text(text):
-    """
-    Convert extracted PDF text into meaningful lines.
-    """
+# ============================================================
+# Section / semantic vocabulary
+# ============================================================
 
-    lines = []
+EXPERIENCE_SECTION_NAMES = {
+    "experience",
+    "work experience",
+    "professional experience",
+    "employment",
+    "employment history",
+    "career history",
+    "work history",
 
-    for raw_line in text.splitlines():
-
-        line = _clean_line(raw_line)
-
-        if line:
-            lines.append(line)
-
-    return lines
-
-
-# =========================================================
-# Section detection
-# =========================================================
-
-def _normalize_section_name(line):
-    line = line.lower()
-    line = re.sub(r"[^a-zäöüß ]", "", line)
-    line = re.sub(r"\s+", " ", line)
-    return line.strip()
-
-
-def _looks_like_stop_section(line):
-    normalized = _normalize_section_name(line)
-    return normalized in STOP_SECTIONS
+    "berufserfahrung",
+    "berufliche erfahrung",
+    "arbeitserfahrung",
+    "beruflicher werdegang",
+    "beruflicher laufbahn",
+    "beschäftigung",
+    "beschaeftigung",
+    "tätigkeiten",
+    "taetigkeiten",
+    "berufliche tätigkeiten",
+    "berufliche taetigkeiten",
+}
 
 
-# =========================================================
+NON_EXPERIENCE_SECTION_NAMES = {
+    # English
+    "education",
+    "academic background",
+    "academic experience",
+    "qualifications",
+    "skills",
+    "technical skills",
+    "technical toolbox",
+    "languages",
+    "projects",
+    "certifications",
+    "certificates",
+    "publications",
+    "research",
+    "awards",
+    "honors",
+    "interests",
+    "volunteering",
+    "social engagement",
+    "references",
+    "contact",
+    "personal information",
+    "personal info",
+    "profile",
+    "summary",
+    "career goals",
+
+    # German
+    "ausbildung",
+    "bildung",
+    "studium",
+    "akademischer werdegang",
+    "qualifikationen",
+    "kenntnisse",
+    "fachkenntnisse",
+    "fähigkeiten",
+    "faehigkeiten",
+    "technische kenntnisse",
+    "sprachen",
+    "projekte",
+    "zertifikate",
+    "zertifizierungen",
+    "publikationen",
+    "forschung",
+    "auszeichnungen",
+    "ehrenamt",
+    "soziales engagement",
+    "referenzen",
+    "persönliche daten",
+    "persoenliche daten",
+    "persönliche informationen",
+    "persoenliche informationen",
+    "profil",
+    "zusammenfassung",
+    "karriereziele",
+}
+
+
+# ============================================================
+# Job-title vocabulary
+# ============================================================
+
+JOB_TITLE_WORDS = {
+    # English
+    "engineer",
+    "engineering",
+    "developer",
+    "software",
+    "scientist",
+    "researcher",
+    "research",
+    "analyst",
+    "architect",
+    "manager",
+    "consultant",
+    "specialist",
+    "designer",
+    "administrator",
+    "technician",
+    "intern",
+    "trainee",
+    "assistant",
+    "associate",
+    "coordinator",
+    "director",
+    "lead",
+    "senior",
+    "junior",
+    "principal",
+    "professor",
+    "lecturer",
+    "student",
+    "working student",
+
+    # German
+    "ingenieur",
+    "ingenieurin",
+    "entwickler",
+    "entwicklerin",
+    "softwareentwickler",
+    "softwareentwicklerin",
+    "wissenschaftler",
+    "wissenschaftlerin",
+    "forscher",
+    "forscherin",
+    "analyst",
+    "analystin",
+    "architekt",
+    "architektin",
+    "manager",
+    "berater",
+    "beraterin",
+    "spezialist",
+    "spezialistin",
+    "designer",
+    "designerin",
+    "techniker",
+    "technikerin",
+    "praktikant",
+    "praktikantin",
+    "werkstudent",
+    "werkstudentin",
+    "hilfskraft",
+    "mitarbeiter",
+    "mitarbeiterin",
+    "assistent",
+    "assistentin",
+    "koordinator",
+    "koordinatorin",
+    "leiter",
+    "leiterin",
+    "leitung",
+    "professor",
+    "professorin",
+    "dozent",
+    "dozentin",
+}
+
+
+# ============================================================
+# Education vocabulary
+# ============================================================
+
+EDUCATION_WORDS = {
+    # English
+    "bachelor",
+    "master",
+    "masters",
+    "phd",
+    "doctorate",
+    "doctor",
+    "degree",
+    "university",
+    "college",
+    "school",
+    "thesis",
+    "dissertation",
+    "student",
+
+    # German
+    "bachelor",
+    "master",
+    "promotion",
+    "doktor",
+    "doktorat",
+    "universität",
+    "universitaet",
+    "hochschule",
+    "fachhochschule",
+    "studium",
+    "studiert",
+    "abschluss",
+    "abschlussarbeit",
+    "masterarbeit",
+    "bachelorarbeit",
+    "dissertation",
+}
+
+
+# ============================================================
+# Description vocabulary
+# ============================================================
+
+DESCRIPTION_STARTERS = {
+    # English
+    "developed",
+    "designed",
+    "implemented",
+    "created",
+    "built",
+    "worked",
+    "working",
+    "managed",
+    "led",
+    "supported",
+    "maintained",
+    "engineered",
+    "programmed",
+    "optimized",
+    "analysed",
+    "analyzed",
+    "integrated",
+    "deployed",
+    "tested",
+    "research",
+    "researched",
+    "responsible",
+    "responsibilities",
+    "contributed",
+    "developing",
+    "designing",
+    "implementation",
+    "development",
+
+    # German
+    "entwickelte",
+    "entwickeln",
+    "entwicklung",
+    "implementierte",
+    "implementierung",
+    "konzipierte",
+    "entwarf",
+    "arbeitete",
+    "betreute",
+    "leitete",
+    "unterstützte",
+    "unterstuetzte",
+    "wartete",
+    "programmierte",
+    "optimierte",
+    "analysierte",
+    "integrierte",
+    "implementiert",
+    "verantwortlich",
+    "zuständig",
+    "zustaendig",
+    "mitarbeit",
+    "mitwirkung",
+    "durchführung",
+    "durchfuehrung",
+    "entwicklung",
+}
+
+
+# ============================================================
+# Company indicators
+# ============================================================
+
+COMPANY_WORDS = {
+    # English
+    "gmbh",
+    "ag",
+    "kg",
+    "mbh",
+    "inc",
+    "llc",
+    "ltd",
+    "corp",
+    "corporation",
+    "company",
+    "university",
+    "institute",
+    "laboratory",
+    "lab",
+    "group",
+    "solutions",
+    "systems",
+    "technologies",
+    "technology",
+
+    # German
+    "unternehmen",
+    "institut",
+    "universität",
+    "universitaet",
+    "hochschule",
+    "forschungszentrum",
+    "zentrum",
+    "werk",
+}
+
+
+# ============================================================
+# Generic helpers
+# ============================================================
+
+def _clean(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+
+    value = value.replace("\xa0", " ")
+    value = value.strip()
+
+    value = re.sub(
+        r"^[\s:;,.|•●○\-–—]+",
+        "",
+        value,
+    )
+
+    value = re.sub(
+        r"[\s:;,.|•●○\-–—]+$",
+        "",
+        value,
+    )
+
+    value = re.sub(r"\s+", " ", value)
+
+    return value.strip() or None
+
+
+def _normalise_for_matching(value: str) -> str:
+    value = _clean(value) or ""
+    value = value.lower()
+
+    # Handle common PDF encoding problems.
+    replacements = {
+        "â€“": "-",
+        "â€”": "-",
+        "âˆ’": "-",
+        "ﬁ": "fi",
+        "ﬂ": "fl",
+        "Ã¤": "ä",
+        "Ã¶": "ö",
+        "Ã¼": "ü",
+        "ÃŸ": "ß",
+        "Ã„": "ä",
+        "Ã–": "ö",
+        "Ãœ": "ü",
+    }
+
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+
+    return value.strip()
+
+
+def _words(value: str) -> list[str]:
+    return re.findall(
+        r"[A-Za-zÄÖÜäöüßÀ-ÿ]+",
+        _normalise_for_matching(value),
+    )
+
+
+def _contains_any_word(value: str, vocabulary: set[str]) -> bool:
+    words = set(_words(value))
+    return bool(words.intersection(vocabulary))
+
+
+# ============================================================
 # Date parsing
-# =========================================================
+# ============================================================
 
-PRESENT_PATTERN = re.compile(
-    r"^(present|current|ongoing|now|heute)$",
-    re.IGNORECASE,
-)
+@dataclass
+class ParsedDate:
+    year: int
+    month: Optional[int]
+    original: str
 
 
-def parse_date(value):
+@dataclass
+class DateRange:
+    start: ParsedDate
+    end: Optional[ParsedDate]
+    original: str
+
+
+def _valid_year(year: int) -> bool:
+    return 1950 <= year <= CURRENT_YEAR + 2
+
+
+def _parse_date_piece(value: str) -> Optional[ParsedDate]:
     """
-    Convert common CV date formats to YYYY-MM.
+    Parse one date component.
 
-    Supported examples:
-
-        08/2023
-        2023/08
-        2023-08
-        2023
-        January 2025
-        Jan 2025
-        Present
-        Current
+    Supported:
+        2020
+        03/2020
+        03.2020
+        03-2020
+        March 2020
+        März 2020
+        2020-03
     """
+
+    value = _normalise_for_matching(value)
 
     if not value:
         return None
 
-    value = value.strip()
-
-    # Present / current
-    if PRESENT_PATTERN.fullmatch(value):
-        return datetime.now().strftime("%Y-%m")
-
-    # MM/YYYY or MM-YYYY
+    # YYYY-MM
     match = re.fullmatch(
-        r"(\d{1,2})[/-](\d{4})",
-        value,
-    )
-
-    if match:
-        month = int(match.group(1))
-        year = int(match.group(2))
-
-        if 1 <= month <= 12:
-            return f"{year:04d}-{month:02d}"
-
-    # YYYY/MM or YYYY-MM
-    match = re.fullmatch(
-        r"(\d{4})[/-](\d{1,2})",
+        r"(19\d{2}|20\d{2})[-/.](0?[1-9]|1[0-2])",
         value,
     )
 
@@ -173,651 +510,1116 @@ def parse_date(value):
         year = int(match.group(1))
         month = int(match.group(2))
 
-        if 1 <= month <= 12:
-            return f"{year:04d}-{month:02d}"
+        if _valid_year(year):
+            return ParsedDate(
+                year=year,
+                month=month,
+                original=value,
+            )
 
-    # YYYY
-    if re.fullmatch(r"\d{4}", value):
-        return f"{int(value):04d}-01"
-
-    # Month YYYY
+    # MM-YYYY / MM.YYYY / MM/YYYY
     match = re.fullmatch(
-        r"([A-Za-z]+)\s+(\d{4})",
+        r"(0?[1-9]|1[0-2])[-/.](19\d{2}|20\d{2})",
+        value,
+    )
+
+    if match:
+        month = int(match.group(1))
+        year = int(match.group(2))
+
+        if _valid_year(year):
+            return ParsedDate(
+                year=year,
+                month=month,
+                original=value,
+            )
+
+    # Month name + year
+    match = re.fullmatch(
+        r"([A-Za-zÄÖÜäöüß]+)\s+(19\d{2}|20\d{2})",
         value,
         re.IGNORECASE,
     )
 
     if match:
-
         month_name = match.group(1).lower()
         year = int(match.group(2))
 
         month = MONTHS.get(month_name)
 
-        if month:
-            return f"{year:04d}-{month:02d}"
+        if month and _valid_year(year):
+            return ParsedDate(
+                year=year,
+                month=month,
+                original=value,
+            )
+
+    # Year + month name
+    match = re.fullmatch(
+        r"(19\d{2}|20\d{2})\s+([A-Za-zÄÖÜäöüß]+)",
+        value,
+        re.IGNORECASE,
+    )
+
+    if match:
+        year = int(match.group(1))
+        month_name = match.group(2).lower()
+
+        month = MONTHS.get(month_name)
+
+        if month and _valid_year(year):
+            return ParsedDate(
+                year=year,
+                month=month,
+                original=value,
+            )
+
+    # Year only
+    match = re.fullmatch(
+        r"(19\d{2}|20\d{2})",
+        value,
+    )
+
+    if match:
+        year = int(match.group(1))
+
+        if _valid_year(year):
+            return ParsedDate(
+                year=year,
+                month=None,
+                original=value,
+            )
 
     return None
 
 
-# =========================================================
-# Date detection
-# =========================================================
+def _is_present(value: str) -> bool:
+    normalized = _normalise_for_matching(value)
 
-DATE_TOKEN = (
-    r"(?:"
-    r"\d{1,2}[/-]\d{4}"
-    r"|"
-    r"\d{4}[/-]\d{1,2}"
-    r"|"
-    r"\d{4}"
-    r"|"
-    r"[A-Za-z]+\s+\d{4}"
-    r"|"
-    r"Present"
-    r"|"
-    r"Current"
-    r"|"
-    r"Ongoing"
-    r"|"
-    r"Now"
-    r")"
-)
+    return normalized in PRESENT_WORDS
 
 
-DATE_RANGE_PATTERN = re.compile(
-    rf"""
-    (?P<start>{DATE_TOKEN})
-    \s*
-    (?:-|to)
-    \s*
-    (?P<end>{DATE_TOKEN})
-    """,
-    re.IGNORECASE | re.VERBOSE,
-)
-
-
-SINGLE_DATE_PATTERN = re.compile(
-    rf"^\s*(?P<date>{DATE_TOKEN})\s*$",
-    re.IGNORECASE,
-)
-
-
-def find_date_range(line):
+def _parse_date_range(line: str) -> Optional[DateRange]:
     """
-    Find a date range anywhere in a line.
+    Extract an employment date range.
+
+    Examples:
+
+        2020 - 2022
+        03/2020 - 09/2022
+        March 2020 - Present
+        März 2020 - heute
+        2020 – heute
+        2021 to 2023
+        2021 bis 2023
     """
 
-    match = DATE_RANGE_PATTERN.search(line)
+    line = _clean(line)
 
-    if not match:
+    if not line:
         return None
 
-    start = parse_date(match.group("start"))
-    end = parse_date(match.group("end"))
+    # --------------------------------------------------------
+    # Month-name dates
+    # --------------------------------------------------------
 
-    if not start or not end:
-        return None
-
-    return {
-        "start": start,
-        "end": end,
-        "start_pos": match.start(),
-        "end_pos": match.end(),
-    }
-
-
-def find_single_date(line):
-    """
-    Detect a line containing only a single year/date.
-
-    Example:
-
-        2020
-    """
-
-    match = SINGLE_DATE_PATTERN.match(line)
-
-    if not match:
-        return None
-
-    date = parse_date(match.group("date"))
-
-    if not date:
-        return None
-
-    return {
-        "start": date,
-        "end": date,
-    }
-
-
-# =========================================================
-# Duration
-# =========================================================
-
-def calculate_duration(start_date, end_date):
-
-    if not start_date or not end_date:
-        return None
-
-    try:
-        start = datetime.strptime(start_date, "%Y-%m")
-        end = datetime.strptime(end_date, "%Y-%m")
-    except ValueError:
-        return None
-
-    months = (
-        (end.year - start.year) * 12
-        + (end.month - start.month)
+    month_names = (
+        r"January|February|March|April|May|June|July|August|"
+        r"September|October|November|December|"
+        r"Jan|Feb|Mar|Apr|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec|"
+        r"Januar|Februar|März|Maerz|April|Mai|Juni|Juli|"
+        r"August|September|Oktober|November|Dezember|Okt|Dez"
     )
 
-    if months < 0:
-        return None
+    date_piece = (
+        rf"(?:"
+        rf"(?:{month_names})\s+(?:19\d{{2}}|20\d{{2}})"
+        rf"|"
+        rf"(?:19\d{{2}}|20\d{{2}})\s+(?:{month_names})"
+        rf"|"
+        rf"(?:0?[1-9]|1[0-2])[/.-](?:19\d{{2}}|20\d{{2}})"
+        rf"|"
+        rf"(?:19\d{{2}}|20\d{{2}})[/.-](?:0?[1-9]|1[0-2])"
+        rf"|"
+        rf"(?:19\d{{2}}|20\d{{2}})"
+        rf")"
+    )
 
-    return round(months / 12, 2)
+    end_piece = rf"(?:{date_piece}|present|current|now|heute|aktuell|derzeit)"
+
+    pattern = re.compile(
+        rf"(?P<start>{date_piece})"
+        rf"\s*"
+        rf"(?:[-–—]|to|until|bis|bis\s+zum|–|—)"
+        rf"\s*"
+        rf"(?P<end>{end_piece})",
+        re.IGNORECASE,
+    )
+
+    match = pattern.search(line)
+
+    if match:
+
+        start = _parse_date_piece(match.group("start"))
+
+        if not start:
+            return None
+
+        end_text = match.group("end")
+
+        if _is_present(end_text):
+            end = ParsedDate(
+                year=CURRENT_YEAR,
+                month=CURRENT_MONTH,
+                original=end_text,
+            )
+        else:
+            end = _parse_date_piece(end_text)
+
+        return DateRange(
+            start=start,
+            end=end,
+            original=match.group(0),
+        )
+
+    # --------------------------------------------------------
+    # "since 2020" / "seit 2020"
+    # --------------------------------------------------------
+
+    since_pattern = re.compile(
+        rf"\b(?:since|from|seit|ab)\s+(?P<start>{date_piece})"
+        rf"(?:\s*(?:-|–|—|to|until|bis)\s*"
+        rf"(?P<end>{end_piece}))?",
+        re.IGNORECASE,
+    )
+
+    match = since_pattern.search(line)
+
+    if match:
+
+        start = _parse_date_piece(match.group("start"))
+
+        if not start:
+            return None
+
+        end_text = match.group("end")
+
+        if end_text:
+            if _is_present(end_text):
+                end = ParsedDate(
+                    CURRENT_YEAR,
+                    CURRENT_MONTH,
+                    end_text,
+                )
+            else:
+                end = _parse_date_piece(end_text)
+        else:
+            end = ParsedDate(
+                CURRENT_YEAR,
+                CURRENT_MONTH,
+                "present",
+            )
+
+        return DateRange(
+            start=start,
+            end=end,
+            original=match.group(0),
+        )
+
+    return None
 
 
-# =========================================================
-# Entry classification
-# =========================================================
+# ============================================================
+# Date formatting
+# ============================================================
 
-def _is_bullet(line):
+def _format_date(value: ParsedDate) -> str:
+    if value.month:
+        return f"{value.year:04d}-{value.month:02d}"
+
+    return f"{value.year:04d}"
+
+
+def _date_to_month_index(value: ParsedDate) -> int:
+    month = value.month or 1
+    return value.year * 12 + month
+
+
+def _calculate_duration(
+    start: ParsedDate,
+    end: Optional[ParsedDate],
+) -> float:
+    if not end:
+        end = ParsedDate(
+            CURRENT_YEAR,
+            CURRENT_MONTH,
+            "present",
+        )
+
+    start_index = _date_to_month_index(start)
+    end_index = _date_to_month_index(end)
+
+    months = max(
+        0,
+        end_index - start_index,
+    )
+
+    return round(months / 12.0, 2)
+
+
+# ============================================================
+# Line classification
+# ============================================================
+
+def _is_bullet(line: str) -> bool:
     return bool(
         re.match(
-            r"^[\uf0b7\u2022\u25aa\u25cfò]",
+            r"^\s*(?:[-•●▪◦*►»]|[0-9]+[.)])\s+",
             line,
         )
     )
 
 
-def _looks_like_location(line):
-    """
-    Conservative location detection.
+def _looks_like_section_heading(line: str) -> bool:
+    normalized = _normalise_for_matching(line)
 
-    Examples:
-
-        Pune, India
-        Ingolstadt
-        Cologne
-        China
-    """
-
-    if not line:
-        return False
-
-    # Strong signal: comma-separated location
-    if "," in line and len(line.split()) <= 8:
+    if normalized in EXPERIENCE_SECTION_NAMES:
         return True
 
-    # Country-only locations
-    countries = {
-        "china",
-        "india",
-        "germany",
-        "france",
-        "uk",
-        "usa",
-        "united states",
-        "united kingdom",
-    }
-
-    if line.lower() in countries:
+    if normalized in NON_EXPERIENCE_SECTION_NAMES:
         return True
 
     return False
 
 
-def _looks_like_description(line):
+def _looks_like_education(line: str) -> bool:
+    return _contains_any_word(
+        line,
+        EDUCATION_WORDS,
+    )
+
+
+def _looks_like_job_title(line: str) -> bool:
     """
-    Detect obvious description/bullet lines.
+    Detect likely employment titles.
+
+    Examples:
+        Software Engineer
+        Robotics Engineer
+        Wissenschaftliche Hilfskraft
+        Vertriebsmitarbeiterin
+        Research Assistant
     """
+
+    if not line:
+        return False
+
+    normalized = _normalise_for_matching(line)
+
+    if _looks_like_section_heading(normalized):
+        return False
+
+    if _looks_like_education(line):
+        return False
+
+    return _contains_any_word(
+        line,
+        JOB_TITLE_WORDS,
+    )
+
+
+def _looks_like_company(line: str) -> bool:
+    """
+    Detect likely company / employer lines.
+    """
+
+    if not line:
+        return False
+
+    normalized = _normalise_for_matching(line)
+
+    if _looks_like_section_heading(normalized):
+        return False
+
+    if _looks_like_job_title(line):
+        return False
+
+    if _contains_any_word(
+        line,
+        COMPANY_WORDS,
+    ):
+        return True
+
+    # Common German company suffixes.
+    if re.search(
+        r"\b(?:GmbH|AG|KG|mbH|e\.V\.)\b",
+        line,
+        re.IGNORECASE,
+    ):
+        return True
+
+    # Corporate suffixes in English.
+    if re.search(
+        r"\b(?:Inc\.?|LLC|Ltd\.?|Corp\.?)\b",
+        line,
+        re.IGNORECASE,
+    ):
+        return True
+
+    return False
+
+
+def _looks_like_location(line: str) -> bool:
+    """
+    Deliberately broad location detector.
+
+    It does not maintain a hard-coded list of cities.
+    """
+
+    if not line:
+        return False
+
+    normalized = _normalise_for_matching(line)
+
+    # Country indicators.
+    if re.search(
+        r"\b(?:Germany|Deutschland|Austria|Österreich|"
+        r"Switzerland|Schweiz|France|Frankreich|"
+        r"Netherlands|Niederlande|Belgium|Belgien|"
+        r"United Kingdom|UK|USA|United States)\b",
+        normalized,
+        re.IGNORECASE,
+    ):
+        return True
+
+    # City, country
+    if re.search(
+        r"^[A-Za-zÄÖÜäöüßÀ-ÿ .'-]+,\s*"
+        r"[A-Za-zÄÖÜäöüßÀ-ÿ .'-]+$",
+        line,
+    ):
+        return True
+
+    # German postcode + city.
+    if re.search(
+        r"\b\d{5}\s+[A-Za-zÄÖÜäöüßÀ-ÿ .'-]+",
+        line,
+    ):
+        return True
+
+    # City + postcode.
+    if re.search(
+        r"^[A-Za-zÄÖÜäöüßÀ-ÿ .'-]+\s+\d{5}\b",
+        line,
+    ):
+        return True
+
+    return False
+
+
+def _looks_like_description(line: str) -> bool:
+    if not line:
+        return False
 
     if _is_bullet(line):
         return True
 
-    description_words = (
-        "responsible",
-        "responsibilities",
-        "managed",
-        "developed",
-        "designed",
-        "implemented",
-        "performed",
-        "supported",
-        "worked",
-        "oversaw",
-        "conducted",
-        "durchführung",
-        "durchführung",
-        "unterstützung",
-        "erstellung",
-        "mitarbeit",
-        "entwicklung",
-    )
+    words = _words(line)
 
-    lower = line.lower()
+    if not words:
+        return False
 
-    return any(
-        lower.startswith(word)
-        for word in description_words
-    )
+    first = words[0].lower()
+
+    if first in DESCRIPTION_STARTERS:
+        return True
+
+    # Longer sentence-like lines are more likely descriptions.
+    if len(words) >= 10:
+        return True
+
+    return False
 
 
-def _extract_company_from_title(title):
+def _looks_like_noise(line: str) -> bool:
     """
-    Handle:
-
-        Working Student at TWT GmbH
-        Internship at Audi AG
-
+    Reject obvious PDF artefacts / decorative text.
     """
 
-    match = re.search(
-        r"\bat\s+(.+)$",
-        title,
+    if not line:
+        return True
+
+    stripped = line.strip()
+
+    # Mostly symbols.
+    alphanumeric = len(
+        re.findall(
+            r"[A-Za-zÄÖÜäöüßÀ-ÿ0-9]",
+            stripped,
+        )
+    )
+
+    if alphanumeric == 0:
+        return True
+
+    if len(stripped) <= 2:
+        return True
+
+    # Email / URL.
+    if "@" in stripped:
+        return True
+
+    if re.search(
+        r"https?://|www\.",
+        stripped,
         re.IGNORECASE,
+    ):
+        return True
+
+    return False
+
+
+# ============================================================
+# Candidate block
+# ============================================================
+
+@dataclass
+class ExperienceCandidate:
+    start: ParsedDate
+    end: Optional[ParsedDate]
+
+    position: Optional[str] = None
+    company: Optional[str] = None
+    location: Optional[str] = None
+    description_lines: list[str] | None = None
+
+    score: float = 0.0
+    date_line_index: int = -1
+
+    def __post_init__(self):
+        if self.description_lines is None:
+            self.description_lines = []
+
+
+# ============================================================
+# Candidate scoring
+# ============================================================
+
+def _score_candidate(
+    candidate: ExperienceCandidate,
+) -> float:
+
+    score = 0.0
+
+    if candidate.start:
+        score += 5
+
+    if candidate.end:
+        score += 2
+
+    if candidate.position:
+        score += 6
+
+    if candidate.company:
+        score += 5
+
+    if candidate.location:
+        score += 2
+
+    if candidate.description_lines:
+        score += min(
+            4,
+            len(candidate.description_lines),
+        )
+
+    # Position is particularly strong evidence.
+    if candidate.position and _looks_like_job_title(
+        candidate.position
+    ):
+        score += 5
+
+    # Company is strong evidence.
+    if candidate.company and _looks_like_company(
+        candidate.company
+    ):
+        score += 4
+
+    # Education-like candidates should be heavily penalized.
+    combined = " ".join(
+        filter(
+            None,
+            [
+                candidate.position,
+                candidate.company,
+            ],
+        )
     )
 
-    if not match:
-        return None
+    if _looks_like_education(combined):
+        score -= 8
 
-    return match.group(1).strip()
+    # Very long position/company lines are suspicious.
+    if candidate.position and len(candidate.position) > 100:
+        score -= 5
+
+    if candidate.company and len(candidate.company) > 120:
+        score -= 4
+
+    return score
 
 
-# =========================================================
-# Entry parsing
-# =========================================================
+# ============================================================
+# Build experience candidate around a date
+# ============================================================
 
-def _parse_entry(block, date_info, date_index):
-    """
-    Parse one candidate experience block.
+def _find_context_lines(
+    lines: list[str],
+    date_index: int,
+    window: int = 6,
+) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
 
-    The date may occur either:
+    before = []
 
-        DATE
-        TITLE
-        COMPANY
-        LOCATION
+    start = max(
+        0,
+        date_index - window,
+    )
 
-    or:
+    for i in range(
+        start,
+        date_index,
+    ):
+        before.append(
+            (
+                i,
+                lines[i],
+            )
+        )
 
-        TITLE
-        COMPANY
-        DATE
-        LOCATION
+    after = []
 
-    or:
+    end = min(
+        len(lines),
+        date_index + window + 1,
+    )
 
-        TITLE
-        DATE
-        COMPANY
-    """
+    for i in range(
+        date_index + 1,
+        end,
+    ):
+        after.append(
+            (
+                i,
+                lines[i],
+            )
+        )
 
-    if not block:
-        return None
+    return before, after
 
-    lines = [
-        line
-        for line in block
-        if line
-    ]
 
-    if not lines:
-        return None
+def _select_position_and_company(
+    context: list[tuple[int, str]],
+    date_index: int,
+) -> tuple[Optional[str], Optional[str]]:
 
-    # -----------------------------------------------------
-    # Remove date line itself
-    # -----------------------------------------------------
+    candidates = []
 
-    content = []
+    for index, line in context:
 
-    for i, line in enumerate(lines):
-
-        if i == date_index:
+        if _looks_like_noise(line):
             continue
 
-        # Remove date from lines containing inline ranges.
-        cleaned = DATE_RANGE_PATTERN.sub("", line).strip()
+        if _looks_like_section_heading(line):
+            continue
 
-        if cleaned:
-            content.append(cleaned)
+        if _parse_date_range(line):
+            continue
 
-    if not content:
-        return None
+        if _looks_like_description(line):
+            continue
 
-    # -----------------------------------------------------
-    # Separate description
-    # -----------------------------------------------------
+        if _looks_like_location(line):
+            continue
 
-    metadata = []
+        position_score = 0
+
+        if _looks_like_job_title(line):
+            position_score += 10
+
+        words = _words(line)
+
+        if 1 <= len(words) <= 8:
+            position_score += 2
+
+        if len(line) <= 80:
+            position_score += 1
+
+        company_score = 0
+
+        if _looks_like_company(line):
+            company_score += 10
+
+        if 1 <= len(words) <= 10:
+            company_score += 1
+
+        # Distance from date.
+        distance = abs(
+            index - date_index
+        )
+
+        position_score -= min(
+            distance,
+            4,
+        ) * 0.5
+
+        company_score -= min(
+            distance,
+            4,
+        ) * 0.4
+
+        candidates.append(
+            (
+                index,
+                line,
+                position_score,
+                company_score,
+            )
+        )
+
+    if not candidates:
+        return None, None
+
+    # --------------------------------------------------------
+    # Position
+    # --------------------------------------------------------
+
+    position_candidates = sorted(
+        candidates,
+        key=lambda x: (
+            -x[2],
+            abs(x[0] - date_index),
+        ),
+    )
+
+    position = None
+
+    if position_candidates:
+        best = position_candidates[0]
+
+        if best[2] >= 3:
+            position = best[1]
+
+    # --------------------------------------------------------
+    # Company
+    # --------------------------------------------------------
+
+    company_candidates = [
+        item
+        for item in candidates
+        if item[1] != position
+    ]
+
+    company_candidates.sort(
+        key=lambda x: (
+            -x[3],
+            abs(x[0] - date_index),
+        )
+    )
+
+    company = None
+
+    if company_candidates:
+        best = company_candidates[0]
+
+        if best[3] >= 3:
+            company = best[1]
+
+    return position, company
+
+
+def _extract_description(
+    lines: list[str],
+    date_index: int,
+    position: Optional[str],
+    company: Optional[str],
+    location: Optional[str],
+) -> list[str]:
+
     description = []
 
-    for line in content:
+    # Look primarily after the metadata.
+    start = date_index + 1
+
+    for i in range(
+        start,
+        min(
+            len(lines),
+            date_index + 12,
+        ),
+    ):
+
+        line = lines[i]
+
+        if _looks_like_section_heading(line):
+            break
+
+        if _parse_date_range(line):
+            break
+
+        if line in {
+            position,
+            company,
+            location,
+        }:
+            continue
+
+        if _looks_like_noise(line):
+            continue
+
+        # If another clear job title appears,
+        # it probably starts another entry.
+        if (
+            _looks_like_job_title(line)
+            and description
+        ):
+            break
 
         if _looks_like_description(line):
             description.append(line)
-        else:
-            metadata.append(line)
-
-    # -----------------------------------------------------
-    # Position
-    # -----------------------------------------------------
-
-    position = None
-    company = None
-    location = None
-
-    if metadata:
-
-        first = metadata[0]
-
-        # "Working Student at TWT GmbH"
-        at_company = _extract_company_from_title(first)
-
-        if at_company:
-            position = first
-            company = at_company
-
-        else:
-            position = first
-
-    # -----------------------------------------------------
-    # Remaining metadata
-    # -----------------------------------------------------
-
-    remaining = metadata[1:]
-
-    for line in remaining:
-
-        if not company and _looks_like_location(line):
-            location = line
             continue
 
-        if not company:
-            company = line
-            continue
+        # Bullet-free CV descriptions.
+        if description:
+            description.append(line)
 
-        if not location and _looks_like_location(line):
-            location = line
+        elif len(_words(line)) >= 8:
+            description.append(line)
 
-    # -----------------------------------------------------
-    # Description
-    # -----------------------------------------------------
-
-    if not description:
-
-        # Anything left after metadata classification can
-        # become description later if needed.
-        description_text = None
-
-    else:
-        description_text = " ".join(description)
-
-    # -----------------------------------------------------
-    # Validate
-    # -----------------------------------------------------
-
-    if not position:
-        return None
-
-    duration = calculate_duration(
-        date_info["start"],
-        date_info["end"],
-    )
-
-    return {
-        "position": position,
-        "company": company,
-        "location": location,
-        "start_date": date_info["start"],
-        "end_date": date_info["end"],
-        "description": description_text,
-        "duration_years": duration,
-    }
+    return description
 
 
-# =========================================================
-# Experience extraction
-# =========================================================
+# ============================================================
+# Main extraction
+# ============================================================
 
-def extract_experience(section_text):
+def extract_experience(
+    text: str,
+) -> list[dict]:
 
-    if not section_text:
+    if not text or not text.strip():
         return []
 
-    lines = _clean_text(section_text)
+    raw_lines = text.splitlines()
+
+    lines = []
+
+    for raw in raw_lines:
+
+        line = _clean(raw)
+
+        if not line:
+            continue
+
+        if _looks_like_noise(line):
+            continue
+
+        lines.append(line)
 
     if not lines:
         return []
 
-    # -----------------------------------------------------
-    # Find all date anchors
-    # -----------------------------------------------------
+    # --------------------------------------------------------
+    # Find date ranges
+    # --------------------------------------------------------
 
-    date_anchors = []
+    date_candidates = []
 
-    for i, line in enumerate(lines):
+    for index, line in enumerate(lines):
 
-        range_info = find_date_range(line)
+        parsed = _parse_date_range(line)
 
-        if range_info:
-            date_anchors.append(
-                {
-                    "index": i,
-                    "start": range_info["start"],
-                    "end": range_info["end"],
-                    "type": "range",
-                }
-            )
+        if not parsed:
             continue
 
-        single_info = find_single_date(line)
-
-        if single_info:
-            date_anchors.append(
-                {
-                    "index": i,
-                    "start": single_info["start"],
-                    "end": single_info["end"],
-                    "type": "single",
-                }
+        date_candidates.append(
+            (
+                index,
+                parsed,
             )
+        )
 
-    if not date_anchors:
+    if not date_candidates:
         return []
 
-    experiences = []
+    # --------------------------------------------------------
+    # Build experience candidates
+    # --------------------------------------------------------
 
-    # -----------------------------------------------------
-    # Process date anchors
-    # -----------------------------------------------------
+    experiences: list[ExperienceCandidate] = []
 
-    for anchor_index, anchor in enumerate(date_anchors):
+    for date_index, date_range in date_candidates:
 
-        date_index = anchor["index"]
-
-        # Stop at social/volunteer sections.
-        before = lines[:date_index]
-
-        if before:
-            recent_section = before[-1]
-
-            if _looks_like_stop_section(recent_section):
-                continue
-
-        # -------------------------------------------------
-        # Determine surrounding block
-        # -------------------------------------------------
-
-        next_date_index = (
-            date_anchors[anchor_index + 1]["index"]
-            if anchor_index + 1 < len(date_anchors)
-            else len(lines)
+        before, after = _find_context_lines(
+            lines,
+            date_index,
         )
 
-        previous_date_index = (
-            date_anchors[anchor_index - 1]["index"]
-            if anchor_index > 0
-            else -1
+        context = before + after
+
+        position, company = _select_position_and_company(
+            context,
+            date_index,
         )
 
-        # -------------------------------------------------
-        # Layout A:
-        #
-        # DATE
-        # TITLE
-        # COMPANY
-        # LOCATION
-        #
-        # Use text after date.
-        # -------------------------------------------------
+        # Location.
+        location = None
 
-        after_block = lines[
-            date_index:next_date_index
-        ]
+        for _, line in after:
 
-        after_content = after_block[1:]
+            if _looks_like_location(line):
+                location = line
+                break
 
-        if after_content:
+        # If no location after date, look before.
+        if not location:
 
-            first = after_content[0]
+            for _, line in reversed(before):
 
-            # Strong indication that this is a title.
-            if (
-                not _looks_like_location(first)
-                and not _looks_like_description(first)
-            ):
+                if _looks_like_location(line):
+                    location = line
+                    break
 
-                block = after_block
+        description = _extract_description(
+            lines,
+            date_index,
+            position,
+            company,
+            location,
+        )
 
-                result = _parse_entry(
-                    block,
-                    anchor,
-                    0,
-                )
+        candidate = ExperienceCandidate(
+            start=date_range.start,
+            end=date_range.end,
+            position=position,
+            company=company,
+            location=location,
+            description_lines=description,
+            date_line_index=date_index,
+        )
 
-                if result:
-                    experiences.append(result)
+        candidate.score = _score_candidate(
+            candidate
+        )
 
-                    continue
+        # ----------------------------------------------------
+        # Require meaningful employment evidence.
+        # ----------------------------------------------------
 
-        # -------------------------------------------------
-        # Layout B:
-        #
-        # TITLE
-        # COMPANY
-        # DATE
-        # LOCATION
-        #
-        # Use text before date.
-        # -------------------------------------------------
+        if candidate.score < 8:
+            continue
 
-        before_block = lines[
-            previous_date_index + 1:date_index + 1
-        ]
+        # A date alone is not enough.
+        if not position and not company:
+            continue
 
-        if len(before_block) > 1:
+        experiences.append(candidate)
 
-            result = _parse_entry(
-                before_block,
-                anchor,
-                len(before_block) - 1,
-            )
-
-            if result:
-                experiences.append(result)
-
-                # Add immediate location after date.
-                if next_date_index > date_index + 1:
-
-                    possible_location = lines[
-                        date_index + 1
-                    ]
-
-                    if _looks_like_location(
-                        possible_location
-                    ):
-                        result["location"] = (
-                            possible_location
-                        )
-
-                continue
-
-    return _remove_duplicate_experiences(experiences)
-
-
-# =========================================================
-# Duplicate protection
-# =========================================================
-
-def _remove_duplicate_experiences(experiences):
+    # --------------------------------------------------------
+    # Remove duplicate candidates
+    # --------------------------------------------------------
 
     unique = []
+
     seen = set()
 
-    for experience in experiences:
+    for candidate in experiences:
 
         key = (
-            experience.get("position"),
-            experience.get("company"),
-            experience.get("start_date"),
-            experience.get("end_date"),
+            candidate.start.year,
+            candidate.start.month,
+            candidate.end.year if candidate.end else None,
+            candidate.end.month if candidate.end else None,
+            (candidate.position or "").lower(),
+            (candidate.company or "").lower(),
         )
 
         if key in seen:
             continue
 
         seen.add(key)
-        unique.append(experience)
+        unique.append(candidate)
 
-    return unique
+    experiences = unique
+
+    # --------------------------------------------------------
+    # Remove obvious education entries
+    # --------------------------------------------------------
+
+    filtered = []
+
+    for candidate in experiences:
+
+        combined = " ".join(
+            filter(
+                None,
+                [
+                    candidate.position,
+                    candidate.company,
+                    candidate.location,
+                ],
+            )
+        )
+
+        education_score = sum(
+            1
+            for word in _words(combined)
+            if word in EDUCATION_WORDS
+        )
+
+        job_score = sum(
+            1
+            for word in _words(
+                candidate.position or ""
+            )
+            if word in JOB_TITLE_WORDS
+        )
+
+        # Strong education signal + no job-title signal.
+        if education_score >= 2 and job_score == 0:
+            continue
+
+        filtered.append(candidate)
+
+    experiences = filtered
+
+    # --------------------------------------------------------
+    # Sort chronologically
+    # --------------------------------------------------------
+
+    experiences.sort(
+        key=lambda x: (
+            x.start.year,
+            x.start.month or 1,
+        )
+    )
+
+    # --------------------------------------------------------
+    # Convert to output schema
+    # --------------------------------------------------------
+
+    result = []
+
+    for candidate in experiences:
+
+        description = " ".join(
+            candidate.description_lines or []
+        )
+
+        result.append(
+            {
+                "position": candidate.position,
+                "company": candidate.company,
+                "location": candidate.location,
+
+                "start_date": _format_date(
+                    candidate.start
+                ),
+
+                "end_date": (
+                    _format_date(candidate.end)
+                    if candidate.end
+                    else None
+                ),
+
+                "description": (
+                    description
+                    if description
+                    else None
+                ),
+
+                "duration_years": _calculate_duration(
+                    candidate.start,
+                    candidate.end,
+                ),
+            }
+        )
+
+    return result
 
 
-# =========================================================
+# ============================================================
 # Total experience
-# =========================================================
+# ============================================================
 
-def calculate_total_experience(experiences):
+def calculate_total_experience(
+    experiences: list[dict],
+) -> float:
 
     if not experiences:
-        return None
+        return 0.0
 
     intervals = []
 
     for experience in experiences:
 
-        start = experience.get("start_date")
-        end = experience.get("end_date")
+        start_text = experience.get(
+            "start_date"
+        )
 
-        if not start or not end:
+        end_text = experience.get(
+            "end_date"
+        )
+
+        if not start_text:
             continue
 
-        try:
-            start_dt = datetime.strptime(
-                start,
-                "%Y-%m",
-            )
+        start = _parse_date_piece(
+            start_text
+        )
 
-            end_dt = datetime.strptime(
-                end,
-                "%Y-%m",
-            )
-
-        except ValueError:
+        if not start:
             continue
 
-        if end_dt < start_dt:
+        if end_text:
+            end = _parse_date_piece(
+                end_text
+            )
+        else:
+            end = ParsedDate(
+                CURRENT_YEAR,
+                CURRENT_MONTH,
+                "present",
+            )
+
+        if not end:
+            continue
+
+        start_index = _date_to_month_index(
+            start
+        )
+
+        end_index = _date_to_month_index(
+            end
+        )
+
+        if end_index < start_index:
             continue
 
         intervals.append(
-            (start_dt, end_dt)
+            (
+                start_index,
+                end_index,
+            )
         )
 
     if not intervals:
-        return None
+        return 0.0
 
-    intervals.sort(key=lambda x: x[0])
+    # --------------------------------------------------------
+    # Merge overlapping AND touching intervals.
+    # --------------------------------------------------------
+
+    intervals.sort()
 
     merged = []
 
@@ -825,36 +1627,38 @@ def calculate_total_experience(experiences):
 
     for start, end in intervals[1:]:
 
-        if start <= current_end:
+        if start <= current_end + 1:
 
-            if end > current_end:
-                current_end = end
+            current_end = max(
+                current_end,
+                end,
+            )
 
         else:
 
             merged.append(
-                (current_start, current_end)
+                (
+                    current_start,
+                    current_end,
+                )
             )
 
             current_start = start
             current_end = end
 
     merged.append(
-        (current_start, current_end)
+        (
+            current_start,
+            current_end,
+        )
     )
 
-    total_months = 0
-
-    for start, end in merged:
-
-        months = (
-            (end.year - start.year) * 12
-            + (end.month - start.month)
-        )
-
-        total_months += months
+    total_months = sum(
+        end - start
+        for start, end in merged
+    )
 
     return round(
-        total_months / 12,
+        total_months / 12.0,
         2,
     )
