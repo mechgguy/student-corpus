@@ -2,21 +2,29 @@ from __future__ import annotations
 
 from src.cv_pipeline.personal_extractor import (
     extract_name,
+    extract_name_from_filename,
     extract_nationality,
 )
+
 from .contact_extractor import extract_contacts
 from .location_extractor import extract_location
 from .language_extractor import extract_languages
 from .skills_extractor import extract_skills
+
 from .experience_extractor import (
     extract_experience,
     calculate_total_experience,
 )
+
 from .education_extractor import extract_education
 from .text_normalizer import normalize_text
 from .section_detector import split_sections
 from .schemas import Candidate
 
+
+# =========================================================
+# Candidate extraction
+# =========================================================
 
 def extract_candidate(
     text: str,
@@ -26,57 +34,92 @@ def extract_candidate(
     """
     Extract structured candidate information from CV text.
 
-    Pipeline:
-        raw text
-            ↓
-        normalize text
-            ↓
-        detect sections
-            ↓
-        specialized extractors
-            ↓
-        Candidate Pydantic model
+    Name detection priority:
+
+        1. Filename
+        2. Explicit name field inside CV
+        3. Name candidates detected from CV text
+
+    Filename examples:
+
+        Max_Mustermann_CV.pdf
+        Anna-Schmidt_Resume.pdf
+
+    If the filename does not contain a reliable name,
+    the extractor automatically falls back to the CV text.
     """
 
     if not text or not text.strip():
-        raise ValueError("CV text is empty.")
+        raise ValueError(
+            "CV text is empty."
+        )
 
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
     # 1. Normalize text
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
 
     text = normalize_text(text)
 
-    # ---------------------------------------------------------
-    # 2. Detect CV sections
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 2. Detect sections
+    # -----------------------------------------------------
 
     sections = split_sections(text)
 
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
     # 3. Contact information
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
 
-    header_text = sections.get("header", text)
+    header_text = sections.get(
+        "header",
+        text,
+    )
 
-    contacts = extract_contacts(header_text)
+    contacts = extract_contacts(
+        header_text
+    )
 
-    # ---------------------------------------------------------
-    # 4. Location
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 4. Personal information
+    # -----------------------------------------------------
 
-    location = extract_location(header_text)
+    # FIRST: filename
+    name = extract_name_from_filename(
+        filename
+    )
 
-    # ---------------------------------------------------------
-    # 5. Languages
-    # ---------------------------------------------------------
+    # FALLBACK: CV text
+    if not name:
+        name = extract_name(text)
+
+    nationality = extract_nationality(
+        text
+    )
+
+    # -----------------------------------------------------
+    # 5. Location
+    # -----------------------------------------------------
+
+    location = extract_location(
+        header_text
+    )
+
+    # -----------------------------------------------------
+    # 6. Languages
+    # -----------------------------------------------------
 
     language_text = "\n".join(
         filter(
             None,
             [
-                sections.get("languages", ""),
-                sections.get("skills", ""),
+                sections.get(
+                    "languages",
+                    "",
+                ),
+                sections.get(
+                    "skills",
+                    "",
+                ),
             ],
         )
     )
@@ -85,171 +128,310 @@ def extract_candidate(
         language_text
     )
 
-    # ---------------------------------------------------------
-    # 6. Skills
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 7. Skills
+    # -----------------------------------------------------
 
     skills = extract_skills(
-        sections.get("skills", "")
+        sections.get(
+            "skills",
+            "",
+        )
     )
 
     if not isinstance(skills, dict):
         skills = {}
 
-    # ---------------------------------------------------------
-    # 7. Work experience
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 8. Work experience
+    # -----------------------------------------------------
 
     experience = extract_experience(
-        sections.get("experience", "")
+        sections.get(
+            "experience",
+            "",
+        )
     )
 
-    total_experience = calculate_total_experience(
-        experience
+    total_experience = (
+        calculate_total_experience(
+            experience
+        )
     )
 
-    # ---------------------------------------------------------
-    # 8. Education
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 9. Education
+    # -----------------------------------------------------
 
     education = extract_education(
-        sections.get("education", "")
+        sections.get(
+            "education",
+            "",
+        )
     )
 
-    # ---------------------------------------------------------
-    # 9. Summary
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 10. Summary
+    # -----------------------------------------------------
 
-    summary = sections.get("summary")
+    summary = sections.get(
+        "summary"
+    )
 
-    # ---------------------------------------------------------
-    # 10. Build Candidate model
-    # ---------------------------------------------------------
+    # -----------------------------------------------------
+    # 11. Candidate model
+    # -----------------------------------------------------
 
     candidate = Candidate(
         candidate_id=candidate_id,
         filename=filename,
 
-        # name=contacts.get("name"),
-        name = extract_name(text),
-        date_of_birth=contacts.get("date_of_birth"),
-        nationality = extract_nationality(text),
-        email=contacts.get("email"),
-        phone=contacts.get("phone"),
+        name=name,
+
+        date_of_birth=contacts.get(
+            "date_of_birth"
+        ),
+
+        nationality=nationality,
+
+        email=contacts.get(
+            "email"
+        ),
+
+        phone=contacts.get(
+            "phone"
+        ),
 
         location=location,
 
-        linkedin=contacts.get("linkedin"),
-        github=contacts.get("github"),
+        linkedin=contacts.get(
+            "linkedin"
+        ),
+
+        github=contacts.get(
+            "github"
+        ),
 
         summary=summary,
 
         education=education,
+
         experience=experience,
 
-        total_experience_years=total_experience,
-        technical_skills=skills or {},
+        total_experience_years=(
+            total_experience
+        ),
+
+        technical_skills=(
+            skills or {}
+        ),
+
         software_skills=[],
 
         languages=languages,
 
         certifications=[],
+
         projects=[],
 
         raw_text=text,
     )
 
-    # Add calculated experience if supported by schema.
-    #
-    # Currently Candidate does not contain
-    # total_experience_years, so the value is calculated
-    # above but is not added to the Pydantic model.
-    #
-    # This can be added to schemas.py later.
-
     return candidate
 
 
-# -------------------------------------------------------------
-# Backwards-compatible alias
-# -------------------------------------------------------------
-#
-# If other code still calls extract_cv(), it will continue
-# to work.
-#
+# =========================================================
+# Backwards-compatible extraction
+# =========================================================
 
-def extract_cv(text: str):
+def extract_cv(
+    text: str,
+    filename: str | None = None,
+):
     """
-    Backwards-compatible low-level extraction function.
+    Backwards-compatible low-level extraction.
 
-    This is useful for debugging the individual extractors.
+    If filename is supplied:
+
+        filename -> CV name -> result
+
+    Otherwise:
+
+        CV text -> result
     """
+
+    if not text or not text.strip():
+        raise ValueError(
+            "CV text is empty."
+        )
+
+    # -----------------------------------------------------
+    # Normalize
+    # -----------------------------------------------------
 
     text = normalize_text(text)
 
+    # -----------------------------------------------------
+    # Sections
+    # -----------------------------------------------------
+
     sections = split_sections(text)
 
-    header_text = sections.get("header", text)
+    # -----------------------------------------------------
+    # Contact information
+    # -----------------------------------------------------
 
-    contacts = extract_contacts(header_text)
+    header_text = sections.get(
+        "header",
+        text,
+    )
 
-    location = extract_location(header_text)
+    contacts = extract_contacts(
+        header_text
+    )
+
+    # -----------------------------------------------------
+    # Personal information
+    # -----------------------------------------------------
+
+    # Filename gets priority when available.
+    name = None
+
+    if filename:
+        name = extract_name_from_filename(
+            filename
+        )
+
+    # Fallback to CV text.
+    if not name:
+        name = extract_name(text)
+
+    nationality = extract_nationality(
+        text
+    )
+
+    # -----------------------------------------------------
+    # Location
+    # -----------------------------------------------------
+
+    location = extract_location(
+        header_text
+    )
+
+    # -----------------------------------------------------
+    # Languages
+    # -----------------------------------------------------
 
     language_text = "\n".join(
         filter(
             None,
             [
-                sections.get("languages", ""),
-                sections.get("skills", ""),
+                sections.get(
+                    "languages",
+                    "",
+                ),
+                sections.get(
+                    "skills",
+                    "",
+                ),
             ],
         )
     )
-    
+
     languages = extract_languages(
         language_text
     )
-    
+
+    # -----------------------------------------------------
+    # Skills
+    # -----------------------------------------------------
+
     skills = extract_skills(
-        sections.get("skills", "")
+        sections.get(
+            "skills",
+            "",
+        )
     )
+
+    if not isinstance(skills, dict):
+        skills = {}
+
+    # -----------------------------------------------------
+    # Experience
+    # -----------------------------------------------------
 
     experience = extract_experience(
-        sections.get("experience", "")
+        sections.get(
+            "experience",
+            "",
+        )
     )
+
+    total_experience = (
+        calculate_total_experience(
+            experience
+        )
+    )
+
+    # -----------------------------------------------------
+    # Education
+    # -----------------------------------------------------
 
     education = extract_education(
-        sections.get("education", "")
+        sections.get(
+            "education",
+            "",
+        )
     )
 
-    total_experience = calculate_total_experience(
-        experience
-    )
+    # -----------------------------------------------------
+    # Return dictionary
+    # -----------------------------------------------------
 
     return {
-        # "name": contacts.get("name"),
-        "name": extract_name(text),
-        "date_of_birth": contacts.get("date_of_birth"),
-        "nationality": extract_nationality(text),
-        "email": contacts.get("email"),
-        "phone": contacts.get("phone"),
+        "name": name,
+
+        "date_of_birth": contacts.get(
+            "date_of_birth"
+        ),
+
+        "nationality": nationality,
+
+        "email": contacts.get(
+            "email"
+        ),
+
+        "phone": contacts.get(
+            "phone"
+        ),
+
         "location": location,
 
-        "linkedin": contacts.get("linkedin"),
-        "github": contacts.get("github"),
+        "linkedin": contacts.get(
+            "linkedin"
+        ),
+
+        "github": contacts.get(
+            "github"
+        ),
 
         "education": education,
+
         "experience": experience,
 
-        "total_experience_years": total_experience,
+        "total_experience_years": (
+            total_experience
+        ),
 
         "technical_skills": skills,
+
         "software_skills": [],
 
         "languages": languages,
 
-        "summary": sections.get("summary"),
+        "summary": sections.get(
+            "summary"
+        ),
 
         "raw_text": text,
     }
-
-

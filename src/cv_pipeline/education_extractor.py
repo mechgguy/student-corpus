@@ -2,7 +2,7 @@ import re
 
 
 # =========================================================
-# Month mapping
+# Date parsing
 # =========================================================
 
 MONTHS = {
@@ -54,13 +54,7 @@ MONTHS = {
 # =========================================================
 
 MONTH_NAME_PATTERN = (
-    r"(?:"
-    r"january|jan|february|feb|march|mar|april|apr|may|"
-    r"june|jun|july|jul|august|aug|september|sep|sept|"
-    r"october|oct|november|nov|december|dec|"
-    r"januar|februar|märz|maerz|mai|juni|juli|oktober|"
-    r"dezember"
-    r")"
+    r"[A-Za-zäöüÄÖÜß]+"
 )
 
 DATE_TOKEN = rf"""
@@ -86,11 +80,11 @@ DATE_RANGE_PATTERN = re.compile(
         |
         —
         |
-        \bis\b
+        to
         |
-        \bto\b
+        bis
         |
-        \bbis\b
+        until
     )
     \s*
     (?P<end>
@@ -132,19 +126,6 @@ SINCE_PATTERN = re.compile(
 # =========================================================
 
 def parse_date(value):
-    """
-    Convert common CV date formats to YYYY-MM.
-
-    Examples:
-        10/2024
-        2024-10
-        October 2024
-        Oktober 2024
-        2024
-
-    A standalone year is normalized to January.
-    """
-
     if not value:
         return None
 
@@ -202,16 +183,13 @@ def parse_date(value):
 
 
 def _extract_dates(line):
-    """
-    Extract start/end dates from a line.
-    """
-
     if not line:
         return None, None
 
     match = DATE_RANGE_PATTERN.search(line)
 
     if match:
+
         start = parse_date(
             match.group("start")
         )
@@ -232,6 +210,7 @@ def _extract_dates(line):
     match = SINCE_PATTERN.search(line)
 
     if match:
+
         start = parse_date(
             match.group("date")
         )
@@ -260,18 +239,21 @@ def _clean_line(line):
 
     line = line.strip()
 
-    # Common PDF bullet characters.
+    # PDF bullet artifacts
     line = re.sub(
-        r"^[\uf0b7\u2022\u25cf\u25aa▪■P]+\s*",
+        r"^[\uf0b7\u2022\u25cf\u25aa]+\s*",
         "",
         line,
     )
 
-    # Remove page-number-only lines.
+    # Broken dash encoding / line wrapping
+    line = line.replace("??", "–")
+
+    # Remove page-number-only lines
     if re.fullmatch(r"\d+", line):
         return ""
 
-    # Excessive whitespace.
+    # Excessive whitespace
     line = re.sub(
         r"\s+",
         " ",
@@ -288,7 +270,7 @@ def _clean_field(value):
     value = value.strip()
 
     value = re.sub(
-        r"^[\s:;,.\-–—]+",
+        r"^[\s:;,.–—-]+",
         "",
         value,
     )
@@ -315,6 +297,7 @@ def _normalize_lines(text):
     lines = []
 
     for line in text.splitlines():
+
         line = _clean_line(line)
 
         if line:
@@ -329,7 +312,6 @@ def _normalize_lines(text):
 
 GRADE_PATTERNS = [
 
-    # Note: 2.1
     re.compile(
         r"\bNote\s*[:\-]?\s*"
         r"([0-9]+(?:[.,][0-9]+)?"
@@ -337,15 +319,6 @@ GRADE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # Note: 2,1
-    re.compile(
-        r"\bNote\s*[:\-]?\s*"
-        r"([0-9]+(?:[.,][0-9]+)?"
-        r"(?:\s*/\s*[0-9]+)?)",
-        re.IGNORECASE,
-    ),
-
-    # Grade: 2.1
     re.compile(
         r"\bGrade\s*[:\-]?\s*"
         r"([0-9]+(?:[.,][0-9]+)?"
@@ -353,7 +326,6 @@ GRADE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # GPA: 3.8
     re.compile(
         r"\bGPA\s*[:\-]?\s*"
         r"([0-9]+(?:[.,][0-9]+)?"
@@ -361,7 +333,6 @@ GRADE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # CGPA: 8.4
     re.compile(
         r"\bCGPA\s*[:\-]?\s*"
         r"([0-9]+(?:[.,][0-9]+)?"
@@ -369,7 +340,6 @@ GRADE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # Gesamtnote: 2.1
     re.compile(
         r"\bGesamtnote\s*[:\-]?\s*"
         r"([0-9]+(?:[.,][0-9]+)?"
@@ -377,7 +347,6 @@ GRADE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # 8.4/10
     re.compile(
         r"\b"
         r"([0-9]+(?:[.,][0-9]+)?"
@@ -386,7 +355,6 @@ GRADE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # 97.75%
     re.compile(
         r"\b"
         r"([0-9]+(?:[.,][0-9]+)?\s*%)"
@@ -397,20 +365,16 @@ GRADE_PATTERNS = [
 
 
 def _extract_grade(lines):
-    """
-    Extract the first educational grade/GPA.
-
-    Returns:
-        grade, cleaned_lines
-    """
 
     grade = None
     cleaned_lines = []
 
     for line in lines:
+
         current = line
 
         for pattern in GRADE_PATTERNS:
+
             match = pattern.search(current)
 
             if not match:
@@ -457,10 +421,12 @@ INSTITUTION_INDICATORS = (
     "universidade",
     "technical university",
     "technische universität",
-    "iit ",
-    "iit-",
+
+    # Common institutional abbreviations.
+    # These are checked as words, not arbitrary substrings.
+    "iit",
     "bit",
-    )
+)
 
 
 def _looks_like_institution(line):
@@ -469,63 +435,58 @@ def _looks_like_institution(line):
 
     lower = line.lower().strip()
 
-    for indicator in INSTITUTION_INDICATORS:
+    # Full institution names.
+    full_indicators = (
+        "university",
+        "universität",
+        "universitaet",
+        "hochschule",
+        "rwth",
+        "school",
+        "schule",
+        "gymnasium",
+        "college",
+        "institute",
+        "institut",
+        "universidade",
+        "technical university",
+        "technische universität",
+    )
 
-        indicator = indicator.lower().strip()
+    if any(
+        indicator in lower
+        for indicator in full_indicators
+    ):
+        return True
 
-        # Short/acronym indicators such as:
-        # BIT, IIT
-        # must be standalone words.
-        if len(indicator) <= 4:
-            if re.search(
-                rf"\b{re.escape(indicator)}\b",
-                lower,
-            ):
-                return True
+    # Short institutional abbreviations must be
+    # complete tokens / abbreviations.
+    if re.search(
+        r"\bIIT\b",
+        line,
+        re.IGNORECASE,
+    ):
+        return True
 
-        # Normal institution indicators can remain
-        # substring matches.
-        else:
-            if indicator in lower:
-                return True
+    if re.search(
+        r"\bBIT(?:\s|-|$)",
+        line,
+        re.IGNORECASE,
+    ):
+        return True
 
     return False
 
 
 def _extract_institution(lines):
-    """
-    Find the strongest institution-looking line.
-    """
 
     for line in lines:
+
         if _looks_like_institution(line):
+
             return _clean_field(line)
 
     return None
-
-
-def _clean_institution(institution):
-    if not institution:
-        return None
-
-    institution = _clean_field(
-        institution
-    )
-
-    if not institution:
-        return None
-
-    # Remove obvious degree prefixes.
-    institution = re.sub(
-        r"^(Bachelor|Master|Master of Science|"
-        r"Master of Engineering|Bachelor of Science|"
-        r"Bachelor of Engineering)\s*,?\s*",
-        "",
-        institution,
-        flags=re.IGNORECASE,
-    )
-
-    return _clean_field(institution)
 
 
 # =========================================================
@@ -534,7 +495,6 @@ def _clean_institution(institution):
 
 DEGREE_PATTERNS = [
 
-    # B.Sc / M.Sc
     re.compile(
         r"\bB\.?\s*Sc\.?\b",
         re.IGNORECASE,
@@ -545,7 +505,6 @@ DEGREE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # B.Eng / M.Eng
     re.compile(
         r"\bB\.?\s*Eng\.?\b",
         re.IGNORECASE,
@@ -556,7 +515,6 @@ DEGREE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # Full degrees
     re.compile(
         r"\bBachelor\s+of\s+Engineering\b",
         re.IGNORECASE,
@@ -587,7 +545,6 @@ DEGREE_PATTERNS = [
         re.IGNORECASE,
     ),
 
-    # German
     re.compile(
         r"\bDiplom\b",
         re.IGNORECASE,
@@ -600,7 +557,18 @@ DEGREE_PATTERNS = [
 ]
 
 
+def _is_degree_line(line):
+    if not line:
+        return False
+
+    return any(
+        pattern.search(line)
+        for pattern in DEGREE_PATTERNS
+    )
+
+
 def _normalize_degree(value):
+
     if not value:
         return None
 
@@ -613,6 +581,7 @@ def _normalize_degree(value):
     )
 
     mapping = {
+
         "bsc": "B.Sc",
         "msc": "M.Sc",
         "beng": "B.Eng",
@@ -654,42 +623,13 @@ def _normalize_degree(value):
 # =========================================================
 
 def _parse_degree_field(text):
-    """
-    Parse degree and field from academic text.
-
-    Examples:
-
-        Master of Science, RWTH Aachen
-        Master of Science in Robotics
-        Bachelor of Engineering in Mechanical Engineering
-        Mechanical Engineering B.Eng.
-        Robotic Systems Engineering M.Sc.
-        Abitur
-    """
 
     if not text:
         return None, None
 
     text = _clean_field(text)
 
-    if not text:
-        return None, None
-
-    # -----------------------------------------------------
-    # Abitur
-    # -----------------------------------------------------
-
-    if re.search(
-        r"\bAbitur\b",
-        text,
-        re.IGNORECASE,
-    ):
-        return "Abitur", None
-
-    # -----------------------------------------------------
-    # Remove trailing institution.
-    # -----------------------------------------------------
-
+    # Remove institution after "at".
     text_without_institution = re.sub(
         r"\s+\bat\s+.+$",
         "",
@@ -701,10 +641,15 @@ def _parse_degree_field(text):
         text_without_institution
     )
 
-    # -----------------------------------------------------
-    # Full degree + "in FIELD"
-    # -----------------------------------------------------
+    # Abitur
+    if re.search(
+        r"\bAbitur\b",
+        text,
+        re.IGNORECASE,
+    ):
+        return "Abitur", None
 
+    # Full Bachelor/Master ... in FIELD
     match = re.search(
         r"\b("
         r"Master\s+of\s+Science"
@@ -720,6 +665,7 @@ def _parse_degree_field(text):
     )
 
     if match:
+
         degree = _normalize_degree(
             match.group(1)
         )
@@ -730,11 +676,6 @@ def _parse_degree_field(text):
 
         return degree, field
 
-    # -----------------------------------------------------
-    # Find degree abbreviation/full degree.
-    # Longest patterns first.
-    # -----------------------------------------------------
-
     degree_match = None
 
     sorted_patterns = sorted(
@@ -744,11 +685,13 @@ def _parse_degree_field(text):
     )
 
     for pattern in sorted_patterns:
+
         match = pattern.search(
             text_without_institution
         )
 
         if match:
+
             degree_match = match
             break
 
@@ -771,11 +714,9 @@ def _parse_degree_field(text):
         ]
     )
 
-    # Mechanical Engineering B.Eng.
     if before:
         field = before
 
-    # B.Eng. Mechanical Engineering
     elif after:
         field = after
 
@@ -786,32 +727,15 @@ def _parse_degree_field(text):
 
 
 # =========================================================
-# Split academic text and institution
+# Institution extraction from academic text
 # =========================================================
 
 def _split_at_institution(text):
-    """
-    Split:
-
-        Degree at RWTH Aachen
-
-    or:
-
-        Degree, RWTH Aachen
-
-    or:
-
-        Bachelor of Engineering, Indien
-
-    """
 
     if not text:
         return text, None
 
-    # -----------------------------------------------------
-    # "at UNIVERSITY"
-    # -----------------------------------------------------
-
+    # "Degree at UNIVERSITY"
     match = re.search(
         r"\s+\bat\s+(.+)$",
         text,
@@ -819,18 +743,19 @@ def _split_at_institution(text):
     )
 
     if match:
-        academic_part = text[:match.start()]
+
+        academic_part = text[
+            :match.start()
+        ]
+
         institution = match.group(1)
 
         return (
             _clean_field(academic_part),
-            _clean_institution(institution),
+            _clean_field(institution),
         )
 
-    # -----------------------------------------------------
-    # Comma-separated institution.
-    # -----------------------------------------------------
-
+    # "Degree, UNIVERSITY"
     parts = re.split(
         r"\s*,\s*",
         text,
@@ -852,7 +777,7 @@ def _split_at_institution(text):
 
                 return (
                     _clean_field(left),
-                    _clean_institution(right),
+                    _clean_field(right),
                 )
 
     return text, None
@@ -878,10 +803,15 @@ NON_CORE_PATTERNS = (
     "voraussichtlicher abschluss",
     "voraussichtlicher",
     "coursework",
+    "vertiefende studie",
+    "vertiefende studien",
+    "deutsch-äquivalent",
+    "deutsch-aequivalent",
 )
 
 
 def _is_non_core_line(line):
+
     if not line:
         return False
 
@@ -893,53 +823,74 @@ def _is_non_core_line(line):
     )
 
 
-# =========================================================
-# Academic strength
-# =========================================================
+def _remove_non_core_text(text):
 
-def _is_degree_line(line):
-    if not line:
-        return False
+    if not text:
+        return text
 
-    return any(
-        pattern.search(line)
-        for pattern in DEGREE_PATTERNS
-    )
+    # Remove everything starting from supplementary
+    # education information.
+    text = re.split(
+        r"\bVertiefende\s+Studie\s*:",
+        text,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
 
+    text = re.split(
+        r"\bWahlfächer\s*:",
+        text,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
 
-def _is_strong_academic_line(line):
-    if not line:
-        return False
+    text = re.split(
+        r"\bWahlfaecher\s*:",
+        text,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
 
-    lower = line.lower()
+    text = re.split(
+        r"\bElective\s+Courses?\s*:",
+        text,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
 
-    if _looks_like_institution(line):
-        return True
-
-    if _is_degree_line(line):
-        return True
-
-    academic_terms = (
-        "mechanical engineering",
-        "robotic systems engineering",
-        "computer science",
-        "electrical engineering",
-        "computer engineering",
-        "data science",
-        "mechatronics",
-        "engineering",
-        "science",
-        "abitur",
-    )
-
-    return any(
-        term in lower
-        for term in academic_terms
-    )
+    return _clean_field(text)
 
 
 # =========================================================
-# Build candidate
+# Institution cleanup
+# =========================================================
+
+def _clean_institution(institution):
+
+    if not institution:
+        return None
+
+    institution = _clean_field(
+        institution
+    )
+
+    if not institution:
+        return None
+
+    institution = re.sub(
+        r"^(Bachelor|Master|Master of Science|"
+        r"Master of Engineering|Bachelor of Science|"
+        r"Bachelor of Engineering)\s*,?\s*",
+        "",
+        institution,
+        flags=re.IGNORECASE,
+    )
+
+    return _clean_field(institution)
+
+
+# =========================================================
+# Candidate construction
 # =========================================================
 
 def _build_candidate(
@@ -947,10 +898,6 @@ def _build_candidate(
     start_date,
     end_date,
 ):
-    """
-    Build one education record from a tightly scoped
-    academic block.
-    """
 
     if not lines:
         return None
@@ -962,12 +909,46 @@ def _build_candidate(
         if not _is_date_line(line)
     ]
 
-    # Remove non-core lines.
-    lines = [
-        line
-        for line in lines
-        if not _is_non_core_line(line)
-    ]
+    # -----------------------------------------------------
+    # Remove supplementary lines.
+    #
+    # IMPORTANT:
+    # Once a non-core line starts, its continuation lines
+    # are also ignored until the next meaningful academic
+    # entry.
+    # -----------------------------------------------------
+
+    cleaned_lines = []
+
+    skip_continuation = False
+
+    for line in lines:
+
+        if _is_non_core_line(line):
+
+            skip_continuation = True
+            continue
+
+        if skip_continuation:
+
+            # A new strong academic line ends the
+            # supplementary section.
+            if (
+                _looks_like_institution(line)
+                or _is_degree_line(line)
+                or re.search(
+                    r"\bengineering\b|\bscience\b",
+                    line,
+                    re.IGNORECASE,
+                )
+            ):
+                skip_continuation = False
+            else:
+                continue
+
+        cleaned_lines.append(line)
+
+    lines = cleaned_lines
 
     if not lines:
         return None
@@ -976,7 +957,28 @@ def _build_candidate(
     # Grade
     # -----------------------------------------------------
 
-    grade, lines = _extract_grade(lines)
+    grade, lines = _extract_grade(
+        lines
+    )
+
+    if not lines:
+        return None
+
+    # -----------------------------------------------------
+    # Remove supplementary information that may remain
+    # on the same line as the actual field.
+    # -----------------------------------------------------
+
+    lines = [
+        _remove_non_core_text(line)
+        for line in lines
+    ]
+
+    lines = [
+        line
+        for line in lines
+        if line
+    ]
 
     if not lines:
         return None
@@ -996,8 +998,11 @@ def _build_candidate(
 
         if explicit_institution:
 
-            if institution is None:
-                institution = explicit_institution
+            institution = (
+                _clean_institution(
+                    explicit_institution
+                )
+            )
 
             if academic_part:
                 academic_lines.append(
@@ -1018,7 +1023,7 @@ def _build_candidate(
         academic_lines.append(line)
 
     # -----------------------------------------------------
-    # Fallback institution detection.
+    # If no institution found yet, search all lines.
     # -----------------------------------------------------
 
     if not institution:
@@ -1040,12 +1045,37 @@ def _build_candidate(
             ]
 
     # -----------------------------------------------------
-    # Academic text.
+    # Academic text
     # -----------------------------------------------------
 
     academic_text = _clean_field(
         " ".join(academic_lines)
     )
+
+    # -----------------------------------------------------
+    # Remove country/location leakage from the beginning
+    # of degree fields.
+    #
+    # Example:
+    #   Bachelor of Engineering, Indien
+    #
+    # should not result in:
+    #   Indien Mechanical Engineering
+    # -----------------------------------------------------
+
+    if academic_text:
+
+        academic_text = re.sub(
+            r"^(?:Indien|India|Deutschland|Germany)"
+            r"\s+",
+            "",
+            academic_text,
+            flags=re.IGNORECASE,
+        )
+
+        academic_text = _clean_field(
+            academic_text
+        )
 
     degree = None
     field = None
@@ -1059,7 +1089,8 @@ def _build_candidate(
         )
 
     # -----------------------------------------------------
-    # Try complete block if necessary.
+    # If degree was not found in academic text,
+    # try complete original text.
     # -----------------------------------------------------
 
     if not degree:
@@ -1075,29 +1106,32 @@ def _build_candidate(
         )
 
     # -----------------------------------------------------
-    # If degree is missing but academic text exists,
-    # preserve it as field.
+    # If no recognizable degree, preserve academic text
+    # as field.
     # -----------------------------------------------------
 
     if not degree and academic_text:
+
         field = academic_text
 
     # -----------------------------------------------------
-    # Clean field.
+    # Clean field
     # -----------------------------------------------------
 
-    if field and institution:
+    if field:
 
-        field = re.sub(
-            re.escape(institution),
-            "",
-            field,
-            flags=re.IGNORECASE,
+        field = _remove_non_core_text(
+            field
         )
 
-        field = _clean_field(field)
+        if institution:
 
-    if field:
+            field = re.sub(
+                re.escape(institution),
+                "",
+                field,
+                flags=re.IGNORECASE,
+            )
 
         field = re.sub(
             r"\bat\s+.+$",
@@ -1106,10 +1140,20 @@ def _build_candidate(
             flags=re.IGNORECASE,
         )
 
-        field = _clean_field(field)
+        field = re.sub(
+            r"^(?:Indien|India|Deutschland|Germany)"
+            r"\s+",
+            "",
+            field,
+            flags=re.IGNORECASE,
+        )
+
+        field = _clean_field(
+            field
+        )
 
     # -----------------------------------------------------
-    # Avoid meaningless records.
+    # Do not create meaningless records.
     # -----------------------------------------------------
 
     if not institution and not degree and not field:
@@ -1126,50 +1170,58 @@ def _build_candidate(
 
 
 # =========================================================
-# Locate education entry boundaries
+# Entry detection
 # =========================================================
 
+def _is_strong_academic_line(line):
+
+    if not line:
+        return False
+
+    lower = line.lower()
+
+    if _looks_like_institution(line):
+        return True
+
+    if _is_degree_line(line):
+        return True
+
+    if "mechanical engineering" in lower:
+        return True
+
+    if "robotic systems engineering" in lower:
+        return True
+
+    if "computer science" in lower:
+        return True
+
+    if "engineering" in lower:
+        return True
+
+    if "science" in lower:
+        return True
+
+    if "abitur" in lower:
+        return True
+
+    return False
+
+
 def _find_entry_starts(lines):
-    """
-    Identify likely beginnings of education entries.
-
-    A line is considered a strong entry start when it
-    contains a degree or a recognizable education heading.
-
-    Institution-only lines are NOT automatically treated as
-    entry starts because they can belong to the degree on the
-    previous line.
-
-    Examples:
-
-        Master of Science, RWTH Aachen
-        Oct 2021 - März 2026
-
-    -> start = Master line
-
-        Bachelor of Engineering, Indien
-        Aug 2015 - Juni 2019
-        Birla Institute of Technology Mesra
-
-    -> start = Bachelor line
-       institution line is part of the same entry
-    """
 
     starts = []
 
     for index, line in enumerate(lines):
 
-        # -------------------------------------------------
-        # Degree line = strong entry boundary
-        # -------------------------------------------------
-
         if _is_degree_line(line):
+
             starts.append(index)
             continue
 
-        # -------------------------------------------------
-        # Explicit degree words
-        # -------------------------------------------------
+        if _looks_like_institution(line):
+
+            starts.append(index)
+            continue
 
         if re.search(
             r"\b("
@@ -1185,53 +1237,39 @@ def _find_entry_starts(lines):
             line,
             re.IGNORECASE,
         ):
-            starts.append(index)
-            continue
 
-        # -------------------------------------------------
-        # Institution-only lines
-        #
-        # Do NOT normally create a new entry.
-        #
-        # They may be:
-        #
-        #   Master of Science
-        #   RWTH Aachen
-        #
-        # or:
-        #
-        #   Bachelor of Engineering
-        #   Birla Institute of Technology Mesra
-        #
-        # -------------------------------------------------
+            starts.append(index)
 
     return starts
 
 
 # =========================================================
-# Find nearest date
+# Date near entry
 # =========================================================
 
 def _find_date_near_entry(
     lines,
-    start_index,
-    end_index,
+    start,
+    end,
 ):
-    """
-    Find the first date range belonging to an entry.
-    """
 
     for index in range(
-        start_index,
-        end_index,
+        start,
+        end,
     ):
 
-        start_date, end_date = _extract_dates(
-            lines[index]
+        line = lines[index]
+
+        start_date, end_date = (
+            _extract_dates(line)
         )
 
         if start_date is not None or end_date is not None:
-            return start_date, end_date
+
+            return (
+                start_date,
+                end_date,
+            )
 
     return None, None
 
@@ -1241,31 +1279,6 @@ def _find_date_near_entry(
 # =========================================================
 
 def extract_education(section_text):
-    """
-    Extract education records from an EDUCATION section.
-
-    The extractor uses academic entry boundaries rather than
-    simply taking a fixed number of lines around every date.
-
-    Supported layouts include:
-
-        Master of Science, RWTH Aachen
-        Oct 2021 - März 2026
-        Robotic Systems Engineering
-
-    and:
-
-        Bachelor of Engineering, Indien
-        Aug 2015 - Juni 2019
-        Birla Institute of Technology Mesra
-        Mechanical Engineering
-
-    and:
-
-        RWTH Aachen
-        Master of Science
-        Oct 2021 - März 2026
-    """
 
     if not section_text:
         return []
@@ -1277,29 +1290,23 @@ def extract_education(section_text):
     if not lines:
         return []
 
-    # -----------------------------------------------------
-    # Find likely entry starts.
-    # -----------------------------------------------------
-
     starts = _find_entry_starts(lines)
 
     if not starts:
         return []
 
-    # Remove starts that are too close together when they
-    # are obviously part of the same entry.
+    # Remove adjacent starts belonging to same entry.
     filtered_starts = []
 
     for index in starts:
 
         if not filtered_starts:
+
             filtered_starts.append(index)
             continue
 
         previous = filtered_starts[-1]
 
-        # Degree + institution on adjacent lines usually
-        # belong to the same education entry.
         if index - previous <= 1:
             continue
 
@@ -1321,7 +1328,6 @@ def extract_education(section_text):
             else len(lines)
         )
 
-        # Do not allow a candidate to become excessively large.
         block_end = min(
             next_start,
             start_index + 8,
@@ -1331,10 +1337,6 @@ def extract_education(section_text):
             start_index:block_end
         ]
 
-        # -------------------------------------------------
-        # Locate date.
-        # -------------------------------------------------
-
         start_date, end_date = (
             _find_date_near_entry(
                 block,
@@ -1342,10 +1344,6 @@ def extract_education(section_text):
                 len(block),
             )
         )
-
-        # -------------------------------------------------
-        # If no date is in the block, skip.
-        # -------------------------------------------------
 
         if start_date is None and end_date is None:
             continue
@@ -1381,16 +1379,10 @@ def extract_education(section_text):
             continue
 
         seen.add(key)
-
         education.append(item)
 
     # =====================================================
-    # Merge only truly compatible records.
-    #
-    # IMPORTANT:
-    # Do NOT merge records merely because they have
-    # similar dates. Master and Bachelor records must
-    # remain separate.
+    # Merge compatible records only.
     # =====================================================
 
     merged = []
@@ -1427,8 +1419,6 @@ def extract_education(section_text):
                 not item["institution"]
             )
 
-            # Only merge if dates AND degree/institution
-            # are compatible.
             if not (
                 same_dates
                 and same_degree
@@ -1475,7 +1465,7 @@ def extract_education(section_text):
             merged.append(item)
 
     # =====================================================
-    # Sort chronologically
+    # Sort chronologically.
     # =====================================================
 
     merged.sort(
