@@ -948,12 +948,12 @@ def extract_name(text):
         #
         # Example:
         #
-        #   Manas
-        #   Mehrotra
+        #   Max
+        #   Mustermann
         #
         # becomes:
         #
-        #   Manas Mehrotra
+        #   Max Mustermann
         # -------------------------------------------------
 
         if index + 1 < len(lines):

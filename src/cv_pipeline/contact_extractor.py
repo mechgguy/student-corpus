@@ -71,10 +71,10 @@ GITHUB_URL_RE = re.compile(
 #
 # Handles examples such as:
 #
-#   LinkedIn: /manas-mehrotraa
-#   LinkedIn /manas-mehrotraa
-#   LinkedIn: manas-mehrotraa
-#   LinkedIn: linkedin.com/in/manas-mehrotraa
+#   LinkedIn: /max-Mustermanna
+#   LinkedIn /max-Mustermanna
+#   LinkedIn: max-Mustermanna
+#   LinkedIn: linkedin.com/in/max-Mustermanna
 #
 # The label is important because a bare username by itself is ambiguous.
 # ---------------------------------------------------------------------------
@@ -456,8 +456,8 @@ def _extract_name(lines: list[str]) -> str | None:
 
     Handles PDFs where first/last names are split:
 
-        Manas
-        Mehrotra
+        max
+        Mustermann
         Robotic Systems Ingenieur
     """
 

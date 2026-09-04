@@ -145,9 +145,8 @@ Example:
 
 ```text
 data/input/
-├── Adrien_CV.pdf
-├── Atharva. D_CV (1).pdf
-└── Lebenslauf_Shaozhuo_Liu Johnson Electric.pdf
+├── Max_MustermannCV.pdf
+└── Lebenslauf_MustermannMax.pdf
 ```
 
 The filenames do not need to follow a specific naming convention.
@@ -728,9 +727,7 @@ Testing is performed using several structurally different CVs rather than a sing
 Current test CVs include:
 
 ```text
-Adrien_CV.pdf
-Atharva. D_CV (1).pdf
-Lebenslauf_Shaozhuo_Liu Johnson Electric.pdf
+
 ```
 
 These provide useful variation in:
